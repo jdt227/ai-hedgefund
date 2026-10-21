@@ -6,3 +6,6 @@ __pycache__/
 data/raw/
 data/processed/
 reports/
+# Private account records and generated private reports (never commit)
+private/
+data/cache/

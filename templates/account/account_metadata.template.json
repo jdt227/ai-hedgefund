@@ -1,0 +1,18 @@
+{
+  "_help": "Copy to private/account/account_metadata.json (git-ignored). Use null for anything you do not know. See docs/ACCOUNT_WORKFLOW.md.",
+  "game_name": null,
+  "snapshot_captured_at": null,
+  "snapshot_timezone": null,
+  "snapshot_source": null,
+  "holdings_complete": null,
+  "cash": null,
+  "reported_account_value": null,
+  "reported_holdings_value": null,
+  "reported_unrealized_pnl_total": null,
+  "ledger_complete_after_snapshot": null,
+  "buy_history_complete_from": null,
+  "etf_counts_toward_stock_minimum": null,
+  "fractional_shares_allowed": null,
+  "commission_per_trade": null,
+  "notes": null
+}

@@ -1,0 +1,4 @@
+trade_id,order_id,executed_at,ticker,side,shares,fill_price,fees,game_name,recommendation_run_id,notes
+F-0001,O-0001,2030-01-16T10:05:12-05:00,XMPC,BUY,10,50.00,0.00,Example Class Game (FICTITIOUS),2030-01-15_213000,partial fill 1 of 2
+F-0002,O-0001,2030-01-16T10:05:40-05:00,XMPC,BUY,10,50.02,0.00,Example Class Game (FICTITIOUS),2030-01-15_213000,partial fill 2 of 2
+F-0003,O-0002,2030-01-17T11:00:00-05:00,XMPA,SELL,10,101.00,0.00,Example Class Game (FICTITIOUS),,rebalance

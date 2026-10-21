@@ -1,0 +1,3 @@
+ticker,shares,displayed_purchase_price,displayed_current_price,market_value,reported_unrealized_pnl,asset_type
+XMPA,50,95.00,100.00,5000.00,250.00,STOCK
+XMPB,25,190.00,200.00,5000.00,250.00,STOCK

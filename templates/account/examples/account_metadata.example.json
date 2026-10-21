@@ -1,0 +1,18 @@
+{
+  "_help": "FICTITIOUS EXAMPLE. Tickers, game, and amounts are invented for illustration.",
+  "game_name": "Example Class Game (FICTITIOUS)",
+  "snapshot_captured_at": "2030-01-15T16:30:00",
+  "snapshot_timezone": "America/New_York",
+  "snapshot_source": "Fictitious example snapshot",
+  "holdings_complete": true,
+  "cash": 50000.00,
+  "reported_account_value": 60000.00,
+  "reported_holdings_value": 10000.00,
+  "reported_unrealized_pnl_total": 500.00,
+  "ledger_complete_after_snapshot": true,
+  "buy_history_complete_from": "2030-01-01T00:00:00",
+  "etf_counts_toward_stock_minimum": null,
+  "fractional_shares_allowed": false,
+  "commission_per_trade": 0.0,
+  "notes": "Fictitious data for documentation and tests only."
+}
