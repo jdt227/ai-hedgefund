@@ -1,0 +1,75 @@
+# Portfolio Selection Report — 2026-09-18
+
+## Report Status
+This document is a reconstructed initial portfolio record based on positions
+entered in the stock-market game before the repository's macro-report,
+firm-research, quantitative-risk, and automated portfolio-construction modules
+were implemented.
+
+It is not represented as an autonomous AI-generated recommendation. The
+portfolio was manually established during the initial project setup. The purpose
+of this report is to create an auditable baseline against which the future
+research pipeline can be evaluated.
+
+## Portfolio Thesis
+The initial portfolio is concentrated in large-cap U.S. health care and
+financial-services exposure, with SPY included as a broad-market benchmark and
+diversifier. AbbVie, Eli Lilly, and UnitedHealth provide health-care exposure,
+while Bank of America provides financial-sector exposure.
+
+This allocation is a starting portfolio for the investment-game period, not the
+output of the future agent system. The formal macro report, firm investment
+reports, momentum/volatility measures, liquidity checks, sector-exposure
+controls, and position-sizing rules have not yet been run.
+
+## Selected Holdings
+
+| Symbol | Sector | Approximate Position Value | Approximate Weight | Initial Rationale | Primary Risk |
+|---|---|---:|---:|---|---|
+| ABBV | Health Care | $7,918.80 | 18.79% | Large-cap health-care exposure and diversification within the initial portfolio | Company-specific pharmaceutical, regulatory, and patent-expiration risk |
+| BAC | Financials | $7,966.74 | 18.90% | Large U.S. bank exposure and sensitivity to domestic economic and rate conditions | Credit losses, rate changes, and economic slowdown risk |
+| LLY | Health Care | $9,223.44 | 21.88% | Large-cap health-care and pharmaceutical exposure | Valuation, clinical, regulatory, and product-concentration risk |
+| SPY | Broad U.S. Equity Market | $7,616.90 | 18.07% | Broad-market benchmark exposure and diversification beyond individual company holdings | General U.S. equity-market and macroeconomic risk |
+| UNH | Health Care | $9,422.50 | 22.36% | Large-cap managed-care and health-services exposure | Regulatory, reimbursement, utilization, and policy risk |
+
+## Cash Allocation
+- Cash weight: 0.00%
+- Reason: The positions were established manually before the repository's
+  portfolio-construction module was implemented. The future version will allow
+  cash when evidence is weak, risks are elevated, or portfolio constraints
+  prevent additional allocations.
+
+## Constraint Check
+
+| Constraint | Future System Limit | Initial Portfolio Actual | Status |
+|---|---:|---:|---|
+| Number of equity holdings | 8–10 | 5 | Not yet active |
+| Maximum individual position weight | 8% | 22.36% | Not yet active |
+| Maximum sector weight | 25% | 63.03% Health Care | Not yet active |
+| Maximum total equity allocation | 80% | 100% | Not yet active |
+| Minimum cash allocation | 20% | 0% | Not yet active |
+| Total portfolio weight | 100% | 100% | Pass |
+
+## Portfolio Risks and Review Triggers
+- The initial portfolio has a substantial health-care concentration: ABBV, LLY,
+  and UNH together represent approximately 63.03% of the listed portfolio value.
+- The portfolio contains only five positions and is therefore more concentrated
+  than the future system's intended 8–10 holding structure.
+- No validated macro regime, company research reports, historical-volatility
+  calculations, correlation analysis, or liquidity checks were used when these
+  positions were established.
+- The Sunday implementation will add the macro report, firm investment reports,
+  quantitative risk packet, portfolio constraints, and an allocation validator.
+- After those modules are active, the system will compare future model-generated
+  recommendations with this initial manual portfolio baseline.
+
+## Initial Allocation CSV
+CSV
+Symbol,Weight
+ABBV,18.79
+BAC,18.90
+LLY,21.88
+SPY,18.07
+UNH,22.36
+CASH,0.00
+CSV

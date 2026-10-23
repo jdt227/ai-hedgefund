@@ -1,0 +1,43 @@
+# Portfolio Selection Report — 2026-09-18
+
+## Portfolio Thesis
+This is an initialization-only placeholder run. The system has not yet received
+a validated macro report, firm-level investment reports, or a quantitative risk
+packet containing price, volatility, liquidity, and sector-exposure data.
+
+The appropriate portfolio posture is cautious. The system abstains from equity
+selection because allocating capital without those required inputs would create
+an unsupported investment thesis and defeat the purpose of an auditable
+research process.
+
+## Selected Holdings
+No equity positions selected.
+
+## Cash Allocation
+- Cash weight: 100%
+- Reason: Required research and risk inputs have not been generated or
+  validated in this placeholder implementation.
+
+## Constraint Check
+| Constraint | Limit | Actual | Pass/Fail |
+|---|---:|---:|---|
+| Number of equity holdings | 8–10 after research pipeline is active | 0 | Placeholder abstention |
+| Maximum individual position | 8% | 0% | Pass |
+| Largest sector weight | 25% | 0% | Pass |
+| Total equity allocation | 80% maximum | 0% | Pass |
+| Cash allocation | 20% minimum | 100% | Pass |
+| Total portfolio weight | 100% | 100% | Pass |
+
+## Portfolio Risks and Review Triggers
+- No macro, firm, or market-data evidence has been validated for this run.
+- No equity allocation should be made until the deterministic data pipeline and
+  research reports are available.
+- The portfolio should be rerun after the Sunday implementation adds the macro
+  report, firm investment reports, quantitative risk packet, and allocation
+  validator.
+
+## Final Allocation CSV
+CSV
+Symbol,Weight
+CASH,100
+CSV
