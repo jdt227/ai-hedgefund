@@ -5,3 +5,6 @@ streamlit
 plotly
 tabulate
 pytest
+requests
+python-dotenv
+vaderSentiment
