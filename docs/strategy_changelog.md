@@ -69,3 +69,15 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
   - Real Estate joined with a neutral regime tilt.
 - **Why:** a wider universe gives the momentum and low-volatility signals more stocks to choose from. Capping stops one extreme stock from distorting every score: in a trial, MRNA's volatility z-score reached 15.7.
 - **Evidence:** none from this account. The list is today's S&P 500, so any historical test on it has survivorship bias.
+
+## Weekly model: holdings review and sell suggestions — 2026-11-03
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:**
+  - Every holding now gets a suggested HOLD, TRIM, or SELL.
+  - New buys need rank 15 or better. Holdings stay until they rank worse than 75 (`SELL_RANK_THRESHOLD`), which is about the top 15% of the universe.
+  - The model portfolio keeps those holdings first, then fills open slots with new names, using equal whole-percent weights.
+  - The LLM response must include a Holdings actions block, which the validator checks.
+- **Why:** the portfolio should evolve by rule instead of ignoring what is held. The gap between the buy and sell lines limits churn on a noisy signal. The sell line was set to 75 instead of 40 because rank 40 would have sold five of eight stocks in one week.
+- **Evidence:** none from this account. The thresholds are judgment calls, and turnover is not yet measured.

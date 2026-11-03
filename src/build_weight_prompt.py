@@ -47,6 +47,10 @@ class RunEvidence:
     excluded: pd.DataFrame = field(default_factory=pd.DataFrame)      # ineligible universe stocks, with reasons
     quality_flags: dict[str, str] = field(default_factory=dict)       # extreme recent one-day moves
     deep_tickers: list[str] = field(default_factory=list)             # news and catalysts were fetched for these
+    review: pd.DataFrame = field(default_factory=pd.DataFrame)        # HOLD/TRIM/SELL per holding
+    weight_basis: str = ""                                            # what review weights are a percent of
+    account_dir: Path = DEFAULT_ACCOUNT_DIR
+    reference_prices: pd.DataFrame = field(default_factory=pd.DataFrame)  # ticker, reference_price, reference_date
 
 
 def build_instructions(run_date: date, blocks: UntrustedBlocks) -> str:
@@ -100,7 +104,11 @@ Required output:
 3. Cash allocation rationale.
 4. Constraint check.
 5. Rejected high-scoring candidates and reasons.
-6. Final CSV allocation with Symbol and Weight columns, using exactly this format:
+6. Holdings actions: every current holding with HOLD, TRIM, or SELL, its target weight, and why.
+   Use exactly this format, with SELL rows at target weight 0 and absent from the allocation:
+Symbol,Action,TargetWeight,Reason
+TICKER,HOLD,8,reason text
+7. Final CSV allocation with Symbol and Weight columns, using exactly this format:
 CSV
 Symbol,Weight
 TICKER,8
@@ -144,7 +152,9 @@ def catalyst_data_available(catalysts: CatalystResult | None) -> bool:
 
 def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: UntrustedBlocks) -> str:
     lines = [
-        f"--- {ticker} | {evidence.universe.get(ticker, 'n/a')} | rank by final score {int(row['rank'])} ---",
+        f"--- {ticker} | {evidence.universe.get(ticker, 'n/a')} | rank by final score "
+        f"{'n/a (not in eligible universe)' if pd.isna(row['rank']) else int(row['rank'])}"
+        f"{' | CURRENT HOLDING' if ticker in _held(evidence) else ''} ---",
         f"Score: final {row['final_score']:+.3f} = momentum/vol {row['composite_score']:+.3f} "
         f"+ sector tilt {row['sector_contribution']:+.3f} + sentiment {row['sentiment_contribution']:+.3f}",
         f"Momentum: 6M ex-1M {row['long_momentum']:+.1%}, 1M {row['short_momentum']:+.1%}; "
@@ -201,10 +211,19 @@ def selectable_tickers(evidence: RunEvidence) -> list[str]:
 
 
 def candidates(evidence: RunEvidence) -> pd.DataFrame:
-    """Top universe stocks by final score, after vetoes, with their overall rank."""
-    scores = evidence.final_scores[evidence.final_scores.index.isin(selectable_tickers(evidence))].copy()
-    scores["rank"] = range(1, len(scores) + 1)
-    return scores[~scores.index.isin(list(evidence.vetoed))].head(settings.PROMPT_TOP_CANDIDATES)
+    """Top stocks by final score after vetoes, plus every holding, with overall rank."""
+    selectable = evidence.final_scores[evidence.final_scores.index.isin(selectable_tickers(evidence))].copy()
+    selectable["rank"] = range(1, len(selectable) + 1)
+    top = selectable[~selectable.index.isin(list(evidence.vetoed))].head(settings.PROMPT_TOP_CANDIDATES)
+    held = _held(evidence)
+    extra = [t for t in held if t not in top.index and t in evidence.final_scores.index]
+    rows = evidence.final_scores.loc[extra].copy()
+    rows["rank"] = selectable["rank"].reindex(rows.index)
+    return pd.concat([top, rows]) if len(rows) else top
+
+
+def _held(evidence: RunEvidence) -> list[str]:
+    return evidence.review["ticker"].tolist() if len(evidence.review) else []
 
 
 def firm_section(evidence: RunEvidence, blocks: UntrustedBlocks) -> str:
@@ -239,6 +258,31 @@ def _position_values(positions: pd.DataFrame, holdings: pd.DataFrame,
     return values, sources
 
 
+def _holding_lines(evidence: RunEvidence, positions: pd.DataFrame, holdings: pd.DataFrame) -> list[str]:
+    """Percent weights and suggested actions. Never dollars."""
+    if not len(evidence.review):
+        values, sources = _position_values(positions, holdings, evidence.prices)
+        total = sum(values.values())
+        lines = []
+        for row in positions.itertuples():
+            if row.ticker in values and total:
+                share = f"{values[row.ticker] / total:.0%} of invested holdings{sources[row.ticker]}"
+            else:
+                share = "no price or snapshot value"
+            in_universe = "in universe" if row.ticker in evidence.universe else "NOT in the stock universe"
+            lines.append(f"- {row.ticker}: {row.shares:g} shares, {share}, {in_universe}")
+        return lines
+    shares = dict(zip(positions["ticker"], positions["shares"]))
+    lines = [f"Weights are {evidence.weight_basis}. Suggested actions come from the holdings review."]
+    for row in evidence.review.itertuples():
+        rank = "unranked" if pd.isna(row.rank) else f"rank {int(row.rank)}"
+        target = "" if pd.isna(row.target_weight_pct) else f", target {int(row.target_weight_pct)}%"
+        in_universe = "" if row.ticker in evidence.universe else ", NOT in the stock universe"
+        lines.append(f"- {row.ticker}: {shares.get(row.ticker, 0):g} shares, {row.current_weight_pct:.1f}%, {rank}, "
+                     f"suggested {row.action_label}{target}: {row.reasons}{in_universe}")
+    return lines
+
+
 def holdings_section(evidence: RunEvidence, account_dir: Path) -> str:
     """Current holdings and monthly buys. No dollar values or cash are included."""
     account = load_account(account_dir)
@@ -250,15 +294,7 @@ def holdings_section(evidence: RunEvidence, account_dir: Path) -> str:
         snap = account.metadata.snapshot_captured_at or "unknown time"
         lines.append(f"Positions are from an account snapshot taken {snap} (status: "
                      f"{positions['status'].iloc[0] if len(positions) else 'empty'}), plus any recorded fills.")
-        values, sources = _position_values(positions, account.holdings, evidence.prices)
-        total = sum(values.values())
-        for row in positions.itertuples():
-            if row.ticker in values and total:
-                share = f"{values[row.ticker] / total:.0%} of invested holdings{sources[row.ticker]}"
-            else:
-                share = "no price or snapshot value"
-            in_universe = "in universe" if row.ticker in evidence.universe else "NOT in the stock universe"
-            lines.append(f"- {row.ticker}: {row.shares:g} shares, {share}, {in_universe}")
+        lines += _holding_lines(evidence, positions, account.holdings)
         lines.append("Cash is not shown. Consider turnover: the class rules and strategy limits still apply as written.")
     month = evidence.now_utc.astimezone(ZoneInfo(CLASS_TIMEZONE)).strftime("%Y-%m")
     monthly = count_monthly_buys(account, month, CLASS_TIMEZONE, settings.CLASS_RULES["min_buy_orders_per_month"], now=evidence.now_utc)
@@ -332,12 +368,17 @@ def write_evidence(evidence: RunEvidence, run_dir: Path) -> Path:
     return out
 
 
-def build_weight_prompt(evidence: RunEvidence, run_dir: Path, account_dir: Path = DEFAULT_ACCOUNT_DIR,
+def build_weight_prompt(evidence: RunEvidence, run_dir: Path, account_dir: Path | None = None,
                         blocks: UntrustedBlocks | None = None) -> Path:
     """Write runs/<run_id>/weight_prompt.txt and the evidence snapshot."""
     blocks = blocks or UntrustedBlocks()
+    account_dir = account_dir or evidence.account_dir
     write_evidence(evidence, run_dir)
     evidence.rejected.to_csv(run_dir / "rejected_candidates.csv", index=False)
+    if len(evidence.review):
+        evidence.review.to_csv(run_dir / "holdings_review.csv", index=False)
+    if len(evidence.reference_prices):
+        evidence.reference_prices.to_csv(run_dir / "reference_prices.csv", index=False)
     return save_weight_prompt(
         run_dir,
         build_instructions(evidence.run_date, blocks),

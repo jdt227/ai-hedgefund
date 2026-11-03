@@ -174,12 +174,12 @@ def test_ineligible_stocks_are_never_selected(small_sp500, tmp_path):
     assert best not in set(evidence.portfolio["ticker"]) and best in evidence.excluded.index
 
 
-def test_holding_outside_universe_is_scored_but_not_selected(small_sp500, make_account):
+def test_holding_outside_universe_is_always_analyzed(small_sp500, make_account):
     prices, close, volume = market(list(small_sp500) + ["ZZZZ"])
     account = make_account(metadata={}, holdings_rows=["ZZZZ,10,90,100,1000,100,STOCK"])
     evidence = run_pipeline.build_run(prices, RUN, NOW, close, volume, account)
-    assert "ZZZZ" in evidence.final_scores.index and "ZZZZ" not in set(evidence.portfolio["ticker"])
-    assert "ZZZZ" in evidence.deep_tickers
+    assert "ZZZZ" in evidence.final_scores.index and "ZZZZ" in evidence.deep_tickers
+    assert evidence.review.set_index("ticker").at["ZZZZ", "rank"] > 0
 
 
 def test_legacy_invariant_matches_original_model(monkeypatch, tmp_path):

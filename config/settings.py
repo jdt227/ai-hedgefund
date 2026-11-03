@@ -69,6 +69,15 @@ FUNNEL_DEEP_N = 50            # top N by score, plus holdings, get news and cata
 Z_SCORE_CAP = 3.0             # sp500 mode only; legacy33 keeps the original uncapped formula
 EXTREME_DAILY_MOVE = 0.40     # a one-day move this large is flagged as a data-quality warning
 
+# Holdings review. New buys need the buy cutoff; incumbents stay until the sell line.
+BUY_RANK_CUTOFF = 15
+SELL_RANK_THRESHOLD = 75      # top 15% of about 500 stocks
+MIN_TRADE_PCT = 1             # ignore weight changes smaller than this many points
+
+# Trade list.
+MAX_STALE_SESSIONS = 2            # older reference prices block share quantities
+EXPECTED_BUYS_PER_WEEKLY_RUN = 1  # cautious guess for later runs this month, for compliance planning
+
 # Class rules come from the assignment. A failure is a grade risk.
 CLASS_RULES = {
     "min_stocks": 5,                    # held at all times; ETFs do not count

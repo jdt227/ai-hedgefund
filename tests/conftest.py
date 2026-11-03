@@ -30,12 +30,14 @@ def base_metadata(**overrides) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def legacy_configuration(monkeypatch):
+def legacy_configuration(monkeypatch, tmp_path):
     """Existing regression tests pin the legacy profile. New tests switch explicitly."""
     from config import settings
 
     monkeypatch.setattr(settings, "PORTFOLIO_LIMITS", "legacy")
     monkeypatch.setattr(settings, "UNIVERSE_MODE", "legacy33")
+    # No test may read the real private account.
+    monkeypatch.setattr("src.run_pipeline.ACCOUNT_DIR", tmp_path / "no_account")
 
 
 @pytest.fixture

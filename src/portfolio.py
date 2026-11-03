@@ -88,6 +88,9 @@ def summarize_sector_weights(portfolio: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+REJECTED_COLUMNS = ["ticker", "sector", "rank", "final_score", "reason"]
+
+
 def whole_percent_weights(equity_pct: int, holdings: int) -> list[int]:
     """Split whole percentage points across holdings, largest weights first."""
     base, extra = divmod(equity_pct, holdings)
@@ -116,6 +119,8 @@ def build_competition_portfolio(
     vetoed: dict[str, str] | None = None,
     sectors: dict[str, str] = UNIVERSE,
     capital: float = STARTING_CAPITAL,
+    incumbents: list[str] | None = None,
+    weight_caps: dict[str, int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     """
     Select by final_score under the class rules and the active strategy limits.
@@ -123,8 +128,13 @@ def build_competition_portfolio(
     Returns (portfolio, rejected candidates, rule failures). Only universe stocks
     can be selected. When too few names survive, cash rises rather than a limit
     being broken, and any shortfall is reported as a failure.
+
+    With ``incumbents``, those holdings are kept first and open slots go only to
+    new names within BUY_RANK_CUTOFF.
     """
     limits = settings.limits()
+    if incumbents is not None:
+        return _holdings_aware(scored, cash_target_pct, vetoed or {}, sectors, capital, incumbents, weight_caps or {})
     max_sector = limits["max_sector_pct"]
     vetoed = vetoed or {}
     cash_pct = max(limits["min_cash_pct"], limits["min_cash_pct"] if cash_target_pct is None else int(cash_target_pct))
@@ -171,6 +181,12 @@ def build_competition_portfolio(
         invested -= 1
     weights = whole_percent_weights(invested, len(selected)) if selected else []
 
+    portfolio = _portfolio_frame(ranked, selected, weights, sectors, capital)
+    return portfolio, pd.DataFrame(rejected, columns=REJECTED_COLUMNS), failures
+
+
+def _portfolio_frame(ranked: pd.DataFrame, selected: list[str], weights: list[int], sectors: dict[str, str],
+                     capital: float) -> pd.DataFrame:
     portfolio = ranked.loc[selected].reset_index().rename(columns={"index": "ticker"})
     portfolio.insert(1, "sector", [sectors[t] for t in selected])
     portfolio["weight_pct"] = weights
@@ -180,4 +196,69 @@ def build_competition_portfolio(
     portfolio["actual_dollars"] = portfolio["shares"] * portfolio["price"]
     portfolio["actual_weight"] = portfolio["actual_dollars"] / capital
     portfolio["cash_remaining_after_trade"] = capital - portfolio["actual_dollars"].sum()
-    return portfolio, pd.DataFrame(rejected, columns=["ticker", "sector", "rank", "final_score", "reason"]), failures
+    return portfolio
+
+
+def _assign_weights(picks: list[str], equity_pct: int, sectors: dict[str, str],
+                    caps: dict[str, int]) -> dict[str, int]:
+    """Whole-percent weights in pick order, reduced to fit sector room and trim caps."""
+    limits = settings.limits()
+    invested = min(equity_pct, len(picks) * limits["max_position_pct"])
+    slots = whole_percent_weights(invested, len(picks))
+    totals: dict[str, int] = {}
+    weights: dict[str, int] = {}
+    for ticker, slot in zip(picks, slots):
+        room = limits["max_sector_pct"] - totals.get(sectors[ticker], 0)
+        weight = min(slot, room, caps.get(ticker, slot))
+        if weight >= settings.MIN_TRADE_PCT:
+            weights[ticker] = weight
+            totals[sectors[ticker]] = totals.get(sectors[ticker], 0) + weight
+    return weights
+
+
+def _holdings_aware(scored: pd.DataFrame, cash_target_pct: int | None, vetoed: dict[str, str],
+                    sectors: dict[str, str], capital: float, incumbents: list[str],
+                    caps: dict[str, int]) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Keep incumbents, then fill open slots with the best new names within the buy cutoff."""
+    limits = settings.limits()
+    cash_pct = max(limits["min_cash_pct"], limits["min_cash_pct"] if cash_target_pct is None else int(cash_target_pct))
+    equity_pct = min(limits["max_equity_pct"], 100 - cash_pct)
+    kept = [t for t in incumbents if t in scored.index][: limits["max_holdings"]]
+    target_count = max(holdings_needed(equity_pct), min(len(kept), limits["max_holdings"]))
+    all_sectors = {**sectors, **{t: sectors.get(t, "Other") for t in kept}}
+    ranked = scored[scored.index.isin(list(sectors))]
+
+    picks = list(kept)
+    rejected: list[dict] = []
+    for rank, (ticker, row) in enumerate(ranked.iterrows(), start=1):
+        if ticker in kept:
+            continue
+        reason = None
+        if ticker in vetoed:
+            reason = f"veto: {vetoed[ticker]}"
+        elif rank > settings.BUY_RANK_CUTOFF:
+            break
+        elif len(picks) < target_count:
+            trial = _assign_weights([*picks, ticker], equity_pct, all_sectors, caps)
+            slot = whole_percent_weights(min(equity_pct, (len(picks) + 1) * limits["max_position_pct"]),
+                                         len(picks) + 1)[len(picks)]
+            if trial.get(ticker, 0) < slot:
+                reason = f"sector limit: {sectors[ticker]} would exceed {limits['max_sector_pct']}%"
+            else:
+                picks.append(ticker)
+        if reason:
+            rejected.append({"ticker": ticker, "sector": sectors[ticker], "rank": rank,
+                             "final_score": row["final_score"], "reason": reason})
+
+    weights = _assign_weights(picks, equity_pct, all_sectors, caps)
+    selected = list(weights)
+    failures: list[str] = []
+    if len(selected) < limits["min_holdings"]:
+        failures.append(f"Only {len(selected)} stocks fit; the strategy limit requires at least {limits['min_holdings']}.")
+    if len(selected) < settings.CLASS_RULES["min_stocks"]:
+        failures.append(f"CLASS RULE RISK: only {len(selected)} stocks selected; the class requires at least "
+                        f"{settings.CLASS_RULES['min_stocks']}.")
+    source = scored.loc[selected].sort_values("final_score", ascending=False)
+    ordered = [t for t in selected]
+    portfolio = _portfolio_frame(source, ordered, [weights[t] for t in ordered], all_sectors, capital)
+    return portfolio, pd.DataFrame(rejected, columns=REJECTED_COLUMNS), failures

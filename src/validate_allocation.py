@@ -14,6 +14,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from config import settings  # noqa: E402
@@ -21,16 +23,18 @@ from src.banned_products import banned_reason, counts_as_stock, is_etf  # noqa: 
 from src.universe import get_universe  # noqa: E402
 
 CASH = "CASH"
-_ROW = re.compile(r"^\s*\|?\s*([A-Za-z][A-Za-z.\-]*)\s*[,|]\s*([^,|]+?)\s*\|?\s*$")
+_ROW = re.compile(r"^\s*\|?\s*([A-Za-z][A-Za-z0-9.\-]*)\s*[,|]\s*([^,|]+?)\s*\|?\s*$")
 
 
 FORMAT = "Format"
 CLASS_RULES = "Class rules"
 STRATEGY_LIMITS = "Strategy limits"
+HOLDINGS_ACTIONS = "Holdings actions"
 GROUP_NOTES = {
     FORMAT: "the response cannot be read as a valid allocation",
     CLASS_RULES: "a failure is a grade risk",
     STRATEGY_LIMITS: "a failure breaks our own limits, not a class rule",
+    HOLDINGS_ACTIONS: "the response must act on every current holding",
 }
 
 
@@ -64,6 +68,57 @@ def extract_block(text: str) -> tuple[list[tuple[str, str]], str | None]:
     return (rows, None) if rows else ([], "The 'Symbol,Weight' block has no rows.")
 
 
+def extract_holdings_actions(text: str) -> dict[str, tuple[str, float | None, str]]:
+    """Parse the LAST Symbol,Action,TargetWeight,Reason block."""
+    lines = text.splitlines()
+    headers = [i for i, line in enumerate(lines)
+               if re.fullmatch(r"\s*symbol\s*,\s*action\s*,\s*targetweight\s*,\s*reason\s*", line, re.I)]
+    if not headers:
+        return {}
+    actions: dict[str, tuple[str, float | None, str]] = {}
+    for line in lines[headers[-1] + 1:]:
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.upper() == "CSV":
+            continue
+        parts = stripped.split(",", 3)
+        if len(parts) < 3 or parts[1].strip().upper() not in ("HOLD", "TRIM", "SELL"):
+            break
+        reason = parts[3].strip() if len(parts) > 3 else ""
+        actions[parts[0].strip().upper()] = (parts[1].strip().upper(), _parse_weight(parts[2]), reason)
+    return actions
+
+
+def validate_holdings_actions(text: str, rows: list[tuple[str, str]], review: list[dict]) -> list[Check]:
+    """Every holding is listed, and each action agrees with the allocation."""
+    actions = extract_holdings_actions(text)
+    weights = {symbol: _parse_weight(raw) for symbol, raw in rows}
+    held = {row["ticker"]: row for row in review}
+    missing = sorted(set(held) - set(actions))
+    extra = sorted(set(actions) - set(held))
+    sold_kept = [t for t, (a, _, _) in actions.items() if a == "SELL" and weights.get(t, 0) not in (0, None)]
+    hold_gone = [t for t, (a, _, _) in actions.items() if a == "HOLD" and not weights.get(t)]
+    not_lower = []
+    for ticker, (action, _, _) in actions.items():
+        if action == "TRIM" and ticker in held:
+            weight = weights.get(ticker)
+            if not weight or weight >= float(held[ticker]["current_weight_pct"]):
+                not_lower.append(ticker)
+    mismatch = [t for t, (a, target, _) in actions.items()
+                if target is not None and a != "SELL" and weights.get(t) is not None and weights[t] != target]
+    must_sell = [t for t, row in held.items() if str(row.get("reasons", "")).startswith("banned by class rules")
+                 and actions.get(t, ("", None, ""))[0] != "SELL"]
+    group = HOLDINGS_ACTIONS
+    return [
+        Check("Every holding listed", not missing, ", ".join(missing) or "ok", group),
+        Check("No unknown holdings listed", not extra, ", ".join(extra) or "ok", group),
+        Check("SELL is absent from the allocation", not sold_kept, ", ".join(sold_kept) or "ok", group),
+        Check("HOLD is present in the allocation", not hold_gone, ", ".join(hold_gone) or "ok", group),
+        Check("TRIM has a lower weight than today", not not_lower, ", ".join(not_lower) or "ok", group),
+        Check("Target weights match the allocation", not mismatch, ", ".join(mismatch) or "ok", group),
+        Check("Banned holdings are sold", not must_sell, ", ".join(must_sell) or "ok", CLASS_RULES),
+    ]
+
+
 def _parse_weight(raw: str) -> float | None:
     try:
         return float(raw.replace("%", "").strip())
@@ -71,9 +126,15 @@ def _parse_weight(raw: str) -> float | None:
         return None
 
 
-def validate(rows: list[tuple[str, str]], universe: dict[str, str] | None = None) -> list[Check]:
-    """Run every rule. All rules are reported even after one fails."""
-    universe = universe if universe is not None else get_universe()
+def validate(rows: list[tuple[str, str]], universe: dict[str, str] | None = None,
+             kept_holdings: dict[str, str] | None = None) -> list[Check]:
+    """Run every rule. All rules are reported even after one fails.
+
+    ``kept_holdings`` (ticker to sector) are current holdings outside the universe
+    that the review did not mark SELL, so keeping them is allowed.
+    """
+    universe = dict(universe if universe is not None else get_universe())
+    universe.update(kept_holdings or {})
     limits = settings.limits()
     rules = settings.CLASS_RULES
     weights = {symbol: _parse_weight(raw) for symbol, raw in rows}
@@ -127,15 +188,26 @@ def validate(rows: list[tuple[str, str]], universe: dict[str, str] | None = None
     ]
 
 
+def _load_review(run_dir: Path) -> list[dict]:
+    """The holdings review written beside the response, when this run had holdings."""
+    path = run_dir / "holdings_review.csv"
+    return pd.read_csv(path).to_dict("records") if path.exists() else []
+
+
 def run(path: Path, universe: dict[str, str] | None = None) -> tuple[bool, list[Check]]:
     """Validate a response file. Writes final_allocation.csv only on a full pass."""
     output = path.parent / "final_allocation.csv"
     # A stale passing file must not survive a failed re-validation.
     output.unlink(missing_ok=True)
-    rows, error = extract_block(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    rows, error = extract_block(text)
+    review = _load_review(path.parent)
     checks = [Check("Allocation block found", error is None, error or "ok")]
     if error is None:
-        checks += validate(rows, universe)
+        kept = {r["ticker"]: r["sector"] for r in review if r["action"] != "SELL"}
+        checks += validate(rows, universe, {t: s for t, s in kept.items() if t not in (universe or get_universe())})
+        if review:
+            checks += validate_holdings_actions(text, rows, review)
     passed = all(check.passed for check in checks)
     if passed:
         body = "".join(f"{symbol},{int(float(raw.replace('%', '')))}\n" for symbol, raw in rows)

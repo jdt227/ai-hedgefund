@@ -29,6 +29,7 @@ from src.data import download_market_data, download_price_data
 from src.features import add_final_score, add_standardized_scores, calculate_features
 from src.macro import MacroResult, run_macro
 from src.market_data.provider import expected_last_completed_session
+from src.holdings_review import HoldingsInputs, incumbents_from_review, review_holdings
 from src.news import run_news
 from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
 from src.reporting.audit_files import create_run_directory
@@ -40,6 +41,8 @@ from src.universe.eligibility import eligibility_table, extreme_move_flags
 PROCESSED_DATA_DIR = Path("data/processed")
 REPORTS_DIR = Path("reports")
 RUNS_DIR = Path("runs")
+# Tests point this elsewhere so they never read the private account.
+ACCOUNT_DIR = DEFAULT_ACCOUNT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +67,10 @@ def uses_original_model() -> bool:
             and settings.UNIVERSE_MODE == "legacy33")
 
 
-def held_tickers(account_dir: Path = DEFAULT_ACCOUNT_DIR) -> list[str]:
+def held_tickers(account_dir: Path | None = None) -> list[str]:
     """Current positions, which are always analyzed even outside the universe."""
     try:
-        return sorted(reconcile(load_account(account_dir)).positions["ticker"])
+        return sorted(reconcile(load_account(account_dir or ACCOUNT_DIR)).positions["ticker"])
     except Exception as exc:  # holdings are optional for research output
         logger.warning("Holdings unavailable: %s", exc)
         return []
@@ -97,8 +100,9 @@ def deep_funnel(scored: pd.DataFrame, table: pd.DataFrame, tilts: dict[str, floa
 
 
 def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd.DataFrame | None = None,
-              volume: pd.DataFrame | None = None, account_dir: Path = DEFAULT_ACCOUNT_DIR) -> RunEvidence:
+              volume: pd.DataFrame | None = None, account_dir: Path | None = None) -> RunEvidence:
     """Compute scores, overlays, and the portfolio from prices and environment keys."""
+    account_dir = account_dir or ACCOUNT_DIR
     status: dict[str, str] = {"yfinance_prices": f"ok through {prices.index[-1].date()}"}
     universe = get_universe()
     held = held_tickers(account_dir)
@@ -143,17 +147,47 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd
     final = add_final_score(scored, universe, macro.sector_tilts,
                             news.sentiment["sentiment_z"] if news is not None else None)
     vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
+    review, basis = _review(final, table, universe, account_dir, prices, close, catalysts, vetoed)
 
     if not uses_original_model():
         selectable = {t: sector for t, sector in universe.items() if table.at[t, "eligible"]}
-        portfolio, rejected, failures = build_competition_portfolio(final, macro.cash_target_pct, vetoed, selectable)
+        incumbents, caps = incumbents_from_review(review) if len(review) else (None, None)
+        portfolio, rejected, failures = build_competition_portfolio(
+            final, macro.cash_target_pct, vetoed, selectable, incumbents=incumbents, weight_caps=caps)
     else:
         portfolio = build_portfolio(scored)
         portfolio["weight_pct"] = (portfolio["target_weight"] * 100).round().astype(int)
         rejected = pd.DataFrame(columns=["ticker", "sector", "rank", "final_score", "reason"])
         failures = []
     return RunEvidence(run_date, now_utc, prices, final, portfolio, rejected, failures, vetoed, macro,
-                       news, catalysts, status, universe, excluded, quality, deep)
+                       news, catalysts, status, universe, excluded, quality, deep, review, basis, account_dir,
+                       reference_prices(close if close is not None else prices))
+
+
+def reference_prices(frame: pd.DataFrame) -> pd.DataFrame:
+    """Latest traded close per ticker, used to size trades."""
+    rows = [{"ticker": t, "reference_price": float(frame[t].dropna().iloc[-1]),
+             "reference_date": str(frame[t].dropna().index[-1].date())}
+            for t in frame.columns if frame[t].notna().any()]
+    return pd.DataFrame(rows, columns=["ticker", "reference_price", "reference_date"])
+
+
+def _review(final: pd.DataFrame, table: pd.DataFrame, universe: dict[str, str], account_dir: Path,
+            prices: pd.DataFrame, close: pd.DataFrame | None, catalysts, vetoed: dict[str, str]) -> tuple[pd.DataFrame, str]:
+    """Review every holding. Weights use traded closes where available."""
+    account = load_account(account_dir)
+    positions = reconcile(account).positions
+    if account.holdings is None or positions.empty:
+        return pd.DataFrame(), ""
+    held = positions["ticker"].tolist()
+    outside = [t for t in held if t not in universe and t in prices]
+    extra = eligibility_table({t: "Other" for t in outside}, prices, close, None) if outside else table.iloc[0:0]
+    bad = {t: r for t, r in pd.concat([table, extra])["reason"].items() if r and t in held}
+    inputs = HoldingsInputs(
+        positions=positions, final_scores=final, eligible=set(table.index[table["eligible"]]), universe=universe,
+        prices=close if close is not None else prices, cash=account.metadata.cash,
+        flags=catalysts.flags if catalysts is not None else {}, vetoed=vetoed, ineligible_reasons=bad)
+    return review_holdings(inputs)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -283,6 +317,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Weight prompt: {prompt_path}")
     print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
     print(f"  python -m src.validate_allocation {run_dir / 'recommendation_reason.txt'}")
+    print(f"  python -m src.trade_list {run_dir}")
 
 
 if __name__ == "__main__":

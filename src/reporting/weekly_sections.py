@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
+from config import settings
 from src.build_weight_prompt import RunEvidence, catalyst_data_available
 from src.macro import render_macro_report
 
@@ -28,11 +31,28 @@ def catalyst_lines(evidence: RunEvidence) -> list[str]:
     return lines
 
 
+def holdings_lines(evidence: RunEvidence) -> list[str]:
+    if not len(evidence.review):
+        return ["No holdings file, so there is nothing to review."]
+    rows = [f"Weights are {evidence.weight_basis}. These are suggestions; you place every trade.", "",
+            "| Ticker | Weight | Rank | Action | Target | Reasons |", "|---|---:|---:|---|---:|---|"]
+    for r in evidence.review.itertuples():
+        rank = "—" if pd.isna(r.rank) else int(r.rank)
+        target = "—" if pd.isna(r.target_weight_pct) else f"{int(r.target_weight_pct)}%"
+        rows.append(f"| {r.ticker} | {r.current_weight_pct:.1f}% | {rank} | {r.action_label} | {target} | {r.reasons} |")
+    return rows
+
+
 def overlay_sections(evidence: RunEvidence) -> list[str]:
     """Report lines for macro, score breakdown, catalysts, rejections, and data status."""
     lines = ["", "## Macro Regime", "", render_macro_report(evidence.macro), "",
              "## Score Breakdown", ""]
     lines += score_breakdown(evidence)
+    lines += ["", "## Holdings Review", ""] + holdings_lines(evidence)
+    invested = int(evidence.portfolio["weight_pct"].sum()) if len(evidence.portfolio) else 0
+    if invested < settings.limits()["max_equity_pct"]:
+        lines += ["", f"The model portfolio invests {invested}%: too few names fit the buy cutoff and limits, "
+                      "so cash fills the rest."]
     lines += ["", "## Catalysts", ""] + catalyst_lines(evidence)
     lines += ["", "## Vetoes and Rejected Candidates", ""]
     if evidence.rule_failures:
