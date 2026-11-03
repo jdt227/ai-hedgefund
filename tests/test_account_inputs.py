@@ -64,6 +64,35 @@ def test_market_value_mismatch_beyond_rounding(make_account):
     assert "market_value_mismatch" in codes(account, "error")
 
 
+def test_out_of_sync_price_column_is_a_warning(make_account):
+    # value - shares x cost = reported P&L exactly; only the price column disagrees.
+    rows = ["XMPA,10,100.00,110.00,1120.00,120.00,STOCK"]
+    account = load_account(make_account(metadata=base_metadata(reported_holdings_value=None,
+                                                               reported_account_value=None),
+                                        holdings_rows=rows))
+    assert account.errors == []
+    assert "price_column_out_of_sync" in codes(account, "warning")
+    assert "pnl_rounding" not in codes(account)
+    h = account.holdings.iloc[0]
+    assert h["market_value"] == 1120.00 and h["displayed_current_price"] == 110.00
+
+
+def test_value_that_disagrees_with_pnl_stays_an_error(make_account):
+    rows = ["XMPA,10,100.00,110.00,1120.00,100.00,STOCK"]
+    account = load_account(make_account(metadata=base_metadata(reported_holdings_value=None,
+                                                               reported_account_value=None),
+                                        holdings_rows=rows))
+    assert "market_value_mismatch" in codes(account, "error")
+
+
+def test_value_mismatch_without_pnl_stays_an_error(make_account):
+    rows = ["XMPA,10,100.00,110.00,1120.00,,STOCK"]
+    account = load_account(make_account(metadata=base_metadata(reported_holdings_value=None,
+                                                               reported_account_value=None),
+                                        holdings_rows=rows))
+    assert "market_value_mismatch" in codes(account, "error")
+
+
 def test_reported_pnl_preserved_alongside_calculated(make_account):
     rows = ["XMPA,40,100.12,110.37,4414.80,410.15,STOCK"]  # display rounding: calc 410.00
     account = load_account(make_account(metadata=base_metadata(reported_holdings_value=None,

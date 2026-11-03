@@ -36,3 +36,11 @@ This entry covers `src.run_pipeline`. It does not change `quant-baseline-1.0.0`.
   - The model now selects only universe stocks and uses whole-percent weights.
 - **Why:** to inform weekly decisions with dated, sourced macro and company evidence, and to replace the prompt's placeholder sections.
 - **Evidence:** none yet. News history is too short to backtest, and the starting weights are judgment calls. Each run now archives its evidence so later comparisons are possible. Toggles in `config/settings.py` allow runs with and without each signal.
+
+## Weekly model: universe expanded to 33 stocks — 2026-11-03
+
+This entry covers `src.run_pipeline`. It also applies when all toggles are off, because the original model reads the same list.
+
+- **What:** added AMD and MU (Technology) and MRK (Health Care).
+- **Why:** the account already holds them, after they ranked highly in the separate 79-stock baseline. With the 30-stock list, the validator rejected any allocation that kept them, and the model could not rank them.
+- **Evidence:** none for the change itself. This is an account-consistency change, not a tested improvement. It adds selection bias, because these names were picked after strong price runs. It also changes the z-score averages, so scores and picks can differ from the 30-stock list.

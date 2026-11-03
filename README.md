@@ -5,7 +5,7 @@ stock-market game. It **recommends only**. You place every trade manually
 in the class's Investopedia game. Nothing here logs in, stores credentials,
 or places orders.
 
-There are two pipelines. `src.run_pipeline` is the weekly 30-stock model with news
+There are two pipelines. `src.run_pipeline` is the weekly 33-stock model with news
 and macro evidence. `src.cli recommend` is the 79-stock, account-aware baseline.
 They are separate and do not share scores.
 
@@ -39,7 +39,7 @@ The validator prints a pass/fail table and writes `final_allocation.csv` only if
 
 These bind the allocation and the validator:
 
-- 8 to 10 long-only stocks from the 30-stock universe in `config/settings.py`
+- 8 to 10 long-only stocks from the 33-stock universe in `config/settings.py`
 - At most 8% per stock and 25% per sector
 - At most 80% equity and at least 20% cash
 - Whole-percentage weights, with stocks plus CASH summing to exactly 100
@@ -87,6 +87,7 @@ With all three toggles off, the original price-only model runs.
 
 ### Known limitations
 
+- **Universe selection bias.** AMD, MU, and MRK joined the universe because they were already held, after strong runs. Don't read past results on this list as evidence of skill.
 - **Too little news history to backtest.** The archive starts with your first run, so none of these signals has evidence of adding return yet.
 - **Sector tilt is very small by default.** At most +/-0.3 x 0.15 = +/-0.045 of score, which rarely changes a rank. The report shows each signal's contribution.
 - **Noisy sentiment.** VADER scores headline wording, not relevance. Finnhub's news for a ticker includes stories that barely mention the company, and popular stocks hit its cap of about 250 articles. If Alpha Vantage ever works, only the top 15 stocks get its scores.

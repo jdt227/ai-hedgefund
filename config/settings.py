@@ -17,6 +17,8 @@ UNIVERSE = {
     "NVDA": "Technology",
     "AVGO": "Technology",
     "ORCL": "Technology",
+    "AMD": "Technology",  # added 2026-11-03 because held; see docs/strategy_changelog.md
+    "MU": "Technology",  # added 2026-11-03 because held
     "GOOGL": "Communication Services",
     "META": "Communication Services",
     "NFLX": "Communication Services",
@@ -36,6 +38,7 @@ UNIVERSE = {
     "LLY": "Health Care",
     "UNH": "Health Care",
     "ABBV": "Health Care",
+    "MRK": "Health Care",  # added 2026-11-03 because held
     "XOM": "Energy",
     "CVX": "Energy",
     "CAT": "Industrials",

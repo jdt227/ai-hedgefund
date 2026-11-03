@@ -195,6 +195,23 @@ def _max_drawdown(prices: pd.Series, sessions: int = 252) -> float:
     return float((window / window.cummax() - 1).min()) if len(window) else float("nan")
 
 
+def _position_values(positions: pd.DataFrame, holdings: pd.DataFrame,
+                     prices: pd.DataFrame) -> tuple[dict[str, float], dict[str, str]]:
+    """Value each position at the latest close, or its snapshot value if it has no price."""
+    snapshot = holdings.set_index("ticker")
+    values: dict[str, float] = {}
+    sources: dict[str, str] = {}
+    for row in positions.itertuples():
+        if row.ticker in prices and prices[row.ticker].notna().any():
+            values[row.ticker] = row.shares * float(prices[row.ticker].dropna().iloc[-1])
+            sources[row.ticker] = ""
+        elif row.ticker in snapshot.index and pd.notna(snapshot.at[row.ticker, "market_value"]):
+            per_share = snapshot.at[row.ticker, "market_value"] / snapshot.at[row.ticker, "shares"]
+            values[row.ticker] = row.shares * float(per_share)
+            sources[row.ticker] = " (at snapshot value)"
+    return values, sources
+
+
 def holdings_section(evidence: RunEvidence, account_dir: Path) -> str:
     """Current holdings and monthly buys. No dollar values or cash are included."""
     account = load_account(account_dir)
@@ -206,14 +223,14 @@ def holdings_section(evidence: RunEvidence, account_dir: Path) -> str:
         snap = account.metadata.snapshot_captured_at or "unknown time"
         lines.append(f"Positions are from an account snapshot taken {snap} (status: "
                      f"{positions['status'].iloc[0] if len(positions) else 'empty'}), plus any recorded fills.")
-        values = {}
-        for row in positions.itertuples():
-            if row.ticker in evidence.prices and evidence.prices[row.ticker].notna().any():
-                values[row.ticker] = row.shares * float(evidence.prices[row.ticker].dropna().iloc[-1])
+        values, sources = _position_values(positions, account.holdings, evidence.prices)
         total = sum(values.values())
         for row in positions.itertuples():
-            share = f"{values[row.ticker] / total:.0%} of invested holdings" if row.ticker in values and total else "no price"
-            in_universe = "in universe" if row.ticker in settings.UNIVERSE else "NOT in the 30-stock universe"
+            if row.ticker in values and total:
+                share = f"{values[row.ticker] / total:.0%} of invested holdings{sources[row.ticker]}"
+            else:
+                share = "no price or snapshot value"
+            in_universe = "in universe" if row.ticker in settings.UNIVERSE else "NOT in the stock universe"
             lines.append(f"- {row.ticker}: {row.shares:g} shares, {share}, {in_universe}")
         lines.append("Cash is not shown. Consider turnover: the allocation rules still apply as written.")
     month = evidence.now_utc.astimezone(ZoneInfo(CLASS_TIMEZONE)).strftime("%Y-%m")

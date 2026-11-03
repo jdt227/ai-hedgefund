@@ -213,8 +213,19 @@ def test_prompt_without_keys_says_data_is_unavailable(tmp_path, make_account):
 def test_prompt_shows_holdings_without_dollars_or_cash(tmp_path, make_account):
     evidence = run_pipeline.build_run(universe_prices(), RUN, NOW)
     text = holdings_section(evidence, make_account())
-    assert "XMPA: 50 shares" in text and "NOT in the 30-stock universe" in text
+    assert "XMPA: 50 shares" in text and "NOT in the stock universe" in text
     assert "50000" not in text and "Executed BUY orders in 2030-01" in text
+
+
+def test_holding_without_a_price_uses_its_snapshot_value(tmp_path, make_account):
+    prices = universe_prices().drop(columns=["AAPL"])
+    evidence = run_pipeline.build_run(prices, RUN, NOW)
+    rows = ["AAPL,10,90.00,100.00,1000.00,100.00,STOCK", "MSFT,10,90.00,100.00,1000.00,100.00,STOCK"]
+    from conftest import base_metadata
+    meta = base_metadata(reported_holdings_value=None, reported_account_value=None)
+    text = holdings_section(evidence, make_account(metadata=meta, holdings_rows=rows))
+    assert "AAPL: 10 shares" in text and "(at snapshot value)" in text
+    assert "no price" not in text
 
 
 def test_prompt_without_holdings_file_still_builds(tmp_path):

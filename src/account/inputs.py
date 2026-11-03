@@ -331,14 +331,24 @@ def validate_holdings(frame: pd.DataFrame, src: str = "holdings",
     frame["unrealized_pnl_diff"] = frame["reported_unrealized_pnl"] - frame["calc_unrealized_pnl"]
 
     for i, row in frame.iterrows():
+        price_out_of_sync = False
         if pd.notna(row["market_value_diff"]):
             tol = row["shares"] * PRICE_DISPLAY_HALF_TICK + VALUE_DISPLAY_TICK
             if abs(row["market_value_diff"]) > tol:
-                issues.append(Issue(
-                    "error", "market_value_mismatch",
-                    f"{label(i)}: shares x displayed price = {row['calc_market_value']:.2f} but reported "
-                    f"market value = {row['market_value']:.2f} (tolerance {tol:.2f}).", src))
-        if pd.notna(row["unrealized_pnl_diff"]):
+                price_out_of_sync = _value_matches_pnl(row)
+                if price_out_of_sync:
+                    issues.append(Issue(
+                        "warning", "price_column_out_of_sync",
+                        f"{label(i)}: shares x displayed price = {row['calc_market_value']:.2f} but reported "
+                        f"market value = {row['market_value']:.2f}. The reported value agrees with reported P&L "
+                        "and cost, so the displayed price likely refreshed at a different moment. "
+                        "Reported value kept.", src))
+                else:
+                    issues.append(Issue(
+                        "error", "market_value_mismatch",
+                        f"{label(i)}: shares x displayed price = {row['calc_market_value']:.2f} but reported "
+                        f"market value = {row['market_value']:.2f} (tolerance {tol:.2f}).", src))
+        if pd.notna(row["unrealized_pnl_diff"]) and not price_out_of_sync:
             # Both displayed prices are rounded, so allow one cent per share.
             tol = row["shares"] * 2 * PRICE_DISPLAY_HALF_TICK + VALUE_DISPLAY_TICK
             sev = "warning" if abs(row["unrealized_pnl_diff"]) > tol else "info"
@@ -349,6 +359,19 @@ def validate_holdings(frame: pd.DataFrame, src: str = "holdings",
                     f"{row['calc_unrealized_pnl']:.2f} (diff {row['unrealized_pnl_diff']:+.2f}, "
                     f"rounding tolerance {tol:.2f}). Reported value kept.", src))
     return frame, issues
+
+
+def _value_matches_pnl(row: pd.Series) -> bool:
+    """True when market value - shares x cost equals reported P&L, within cost rounding.
+
+    Live pages can refresh the price column separately from value and P&L. A typo
+    in the value would break this check, so it stays an error.
+    """
+    if pd.isna(row["displayed_purchase_price"]) or pd.isna(row["reported_unrealized_pnl"]):
+        return False
+    implied = row["market_value"] - row["shares"] * row["displayed_purchase_price"]
+    tol = row["shares"] * PRICE_DISPLAY_HALF_TICK + VALUE_DISPLAY_TICK
+    return bool(abs(implied - row["reported_unrealized_pnl"]) <= tol)
 
 
 def check_snapshot_totals(meta: AccountMetadata, holdings: pd.DataFrame | None) -> list[Issue]:
