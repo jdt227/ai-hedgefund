@@ -35,6 +35,7 @@ def legacy_configuration(monkeypatch):
     from config import settings
 
     monkeypatch.setattr(settings, "PORTFOLIO_LIMITS", "legacy")
+    monkeypatch.setattr(settings, "UNIVERSE_MODE", "legacy33")
 
 
 @pytest.fixture

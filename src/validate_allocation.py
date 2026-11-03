@@ -18,6 +18,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from config import settings  # noqa: E402
 from src.banned_products import banned_reason, counts_as_stock, is_etf  # noqa: E402
+from src.universe import get_universe  # noqa: E402
 
 CASH = "CASH"
 _ROW = re.compile(r"^\s*\|?\s*([A-Za-z][A-Za-z.\-]*)\s*[,|]\s*([^,|]+?)\s*\|?\s*$")
@@ -72,7 +73,7 @@ def _parse_weight(raw: str) -> float | None:
 
 def validate(rows: list[tuple[str, str]], universe: dict[str, str] | None = None) -> list[Check]:
     """Run every rule. All rules are reported even after one fails."""
-    universe = universe if universe is not None else settings.UNIVERSE
+    universe = universe if universe is not None else get_universe()
     limits = settings.limits()
     rules = settings.CLASS_RULES
     weights = {symbol: _parse_weight(raw) for symbol, raw in rows}

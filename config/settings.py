@@ -60,6 +60,15 @@ W_SECTOR_TILT = 0.15
 W_SENTIMENT = 0.10
 SENTIMENT_Z_CLIP = 2.0
 
+# Universe and funnel. "sp500" uses config/universe_sp500.csv; "legacy33" uses UNIVERSE above.
+UNIVERSE_MODE = "sp500"
+ELIGIBILITY_MIN_PRICE = 5.0
+ELIGIBILITY_MIN_DOLLAR_VOLUME = 50_000_000
+ELIGIBILITY_MIN_SESSIONS = 252
+FUNNEL_DEEP_N = 50            # top N by score, plus holdings, get news and catalysts
+Z_SCORE_CAP = 3.0             # sp500 mode only; legacy33 keeps the original uncapped formula
+EXTREME_DAILY_MOVE = 0.40     # a one-day move this large is flagged as a data-quality warning
+
 # Class rules come from the assignment. A failure is a grade risk.
 CLASS_RULES = {
     "min_stocks": 5,                    # held at all times; ETFs do not count
@@ -175,6 +184,8 @@ CYCLICAL_SECTORS = [
     "Technology", "Consumer Discretionary", "Financials",
     "Industrials", "Materials", "Energy", "Communication Services",
 ]
+# Real Estate has no regime tilt; sector ETF relative strength still applies.
+NEUTRAL_SECTORS = ["Real Estate"]
 REGIME_SECTOR_TILT = {
     "risk_on": {"defensive": -0.1, "cyclical": 0.1},
     "neutral": {"defensive": 0.0, "cyclical": 0.0},
@@ -191,6 +202,7 @@ SECTOR_ETFS = {
     "Materials": "XLB",
     "Utilities": "XLU",
     "Communication Services": "XLC",
+    "Real Estate": "XLRE",
 }
 
 # Weight prompt.

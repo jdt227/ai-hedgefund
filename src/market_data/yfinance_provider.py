@@ -31,12 +31,14 @@ class YFinanceProvider:
     name = "yfinance"
 
     def __init__(self, period: str = "2y", close_buffer_minutes: int = 30,
-                 cache_dir: Path = CACHE_DIR, cache_max_age_hours: float = 12, refresh: bool = False):
+                 cache_dir: Path = CACHE_DIR, cache_max_age_hours: float = 12, refresh: bool = False,
+                 with_info: bool = True):
         self.period = period
         self.close_buffer_minutes = close_buffer_minutes
         self.cache_dir = Path(cache_dir)
         self.cache_max_age_hours = cache_max_age_hours
         self.refresh = refresh
+        self.with_info = with_info
 
     # -- caching ---------------------------------------------------------
     def _cache_path(self, tickers: list[str], expected) -> Path:
@@ -103,7 +105,8 @@ class YFinanceProvider:
 
         frames, dropped = drop_incomplete_bars(cached["frames"], now_utc, self.close_buffer_minutes)
         errors = {t: "price: no data returned" for t in tickers if frames["adj_close"][t].dropna().empty}
-        info, info_errors = self._info(tickers, expected)
+        # One request per ticker, so a 500-stock universe skips it and uses its snapshot.
+        info, info_errors = self._info(tickers, expected) if self.with_info else (pd.DataFrame(), {})
         for t, msg in info_errors.items():
             errors[t] = "; ".join(filter(None, [errors.get(t), msg]))
         return MarketDataBundle(

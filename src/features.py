@@ -52,28 +52,39 @@ def calculate_features(prices: pd.DataFrame) -> pd.DataFrame:
     return latest
 
 
-def add_standardized_scores(features: pd.DataFrame) -> pd.DataFrame:
+def add_standardized_scores(
+    features: pd.DataFrame,
+    cap: float | None = None,
+    reference: pd.Index | None = None,
+) -> pd.DataFrame:
     """
     Convert different units to comparable z-scores.
 
     Higher long/short momentum is better.
     Lower volatility is better, so volatility enters negatively.
+
+    Means and standard deviations come from ``reference`` tickers when given, so
+    a holding outside the universe can be scored without shifting everyone else.
+    ``cap`` clips each z-score to +/- cap so extreme values can't dominate.
     """
     scored = features.copy()
+    base = scored if reference is None else scored.loc[scored.index.intersection(reference)]
 
     for column in [
         "long_momentum",
         "short_momentum",
         "annualized_volatility",
     ]:
-        std = scored[column].std(ddof=0)
+        std = base[column].std(ddof=0)
 
         if std == 0 or pd.isna(std):
             scored[f"{column}_z"] = 0.0
         else:
             scored[f"{column}_z"] = (
-                scored[column] - scored[column].mean()
+                scored[column] - base[column].mean()
             ) / std
+        if cap is not None:
+            scored[f"{column}_z"] = scored[f"{column}_z"].clip(-cap, cap)
 
     scored["composite_score"] = (
         0.70 * scored["long_momentum_z"]

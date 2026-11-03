@@ -43,6 +43,10 @@ class RunEvidence:
     news: NewsResult | None = None
     catalysts: CatalystResult | None = None
     source_status: dict[str, str] = field(default_factory=dict)
+    universe: dict[str, str] = field(default_factory=lambda: dict(settings.UNIVERSE))
+    excluded: pd.DataFrame = field(default_factory=pd.DataFrame)      # ineligible universe stocks, with reasons
+    quality_flags: dict[str, str] = field(default_factory=dict)       # extreme recent one-day moves
+    deep_tickers: list[str] = field(default_factory=list)             # news and catalysts were fetched for these
 
 
 def build_instructions(run_date: date, blocks: UntrustedBlocks) -> str:
@@ -140,7 +144,7 @@ def catalyst_data_available(catalysts: CatalystResult | None) -> bool:
 
 def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: UntrustedBlocks) -> str:
     lines = [
-        f"--- {ticker} | {settings.UNIVERSE.get(ticker, 'n/a')} | rank by final score {int(row['rank'])} ---",
+        f"--- {ticker} | {evidence.universe.get(ticker, 'n/a')} | rank by final score {int(row['rank'])} ---",
         f"Score: final {row['final_score']:+.3f} = momentum/vol {row['composite_score']:+.3f} "
         f"+ sector tilt {row['sector_contribution']:+.3f} + sentiment {row['sentiment_contribution']:+.3f}",
         f"Momentum: 6M ex-1M {row['long_momentum']:+.1%}, 1M {row['short_momentum']:+.1%}; "
@@ -148,7 +152,10 @@ def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: Untru
     ]
     catalysts = evidence.catalysts
     news = evidence.news
-    if not catalyst_data_available(catalysts):
+    outside = bool(evidence.deep_tickers) and ticker not in evidence.deep_tickers
+    if outside:
+        lines.append("News and catalysts not fetched (outside funnel). This is not a negative signal.")
+    elif not catalyst_data_available(catalysts):
         lines.append("Catalysts (flags, earnings, 8-Ks, analyst trend): unavailable for this run.")
     else:
         flags = catalysts.flags.get(ticker, [])
@@ -164,7 +171,9 @@ def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: Untru
         if trend:
             lines.append(f"Analyst trend ({trend['previous_period']} to {trend['period']}): "
                          f"bullish {trend['bull_change']:+d}, bearish {trend['bear_change']:+d}")
-    if news is None or news.articles.empty:
+    if outside:
+        pass
+    elif news is None or news.articles.empty:
         lines.append("News data unavailable for this run.")
     else:
         if ticker in news.sentiment.index:
@@ -186,9 +195,14 @@ def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: Untru
     return "\n".join(lines)
 
 
+def selectable_tickers(evidence: RunEvidence) -> list[str]:
+    """Universe stocks that passed eligibility."""
+    return [t for t in evidence.universe if t not in evidence.excluded.index]
+
+
 def candidates(evidence: RunEvidence) -> pd.DataFrame:
     """Top universe stocks by final score, after vetoes, with their overall rank."""
-    scores = evidence.final_scores[evidence.final_scores.index.isin(list(settings.UNIVERSE))].copy()
+    scores = evidence.final_scores[evidence.final_scores.index.isin(selectable_tickers(evidence))].copy()
     scores["rank"] = range(1, len(scores) + 1)
     return scores[~scores.index.isin(list(evidence.vetoed))].head(settings.PROMPT_TOP_CANDIDATES)
 
@@ -243,7 +257,7 @@ def holdings_section(evidence: RunEvidence, account_dir: Path) -> str:
                 share = f"{values[row.ticker] / total:.0%} of invested holdings{sources[row.ticker]}"
             else:
                 share = "no price or snapshot value"
-            in_universe = "in universe" if row.ticker in settings.UNIVERSE else "NOT in the stock universe"
+            in_universe = "in universe" if row.ticker in evidence.universe else "NOT in the stock universe"
             lines.append(f"- {row.ticker}: {row.shares:g} shares, {share}, {in_universe}")
         lines.append("Cash is not shown. Consider turnover: the class rules and strategy limits still apply as written.")
     month = evidence.now_utc.astimezone(ZoneInfo(CLASS_TIMEZONE)).strftime("%Y-%m")
@@ -261,7 +275,7 @@ def risk_section(evidence: RunEvidence, account_dir: Path) -> str:
              "", "Candidate risk table:"]
     rows = []
     for ticker, row in chosen.iterrows():
-        rows.append({"ticker": ticker, "sector": settings.UNIVERSE.get(ticker), "price": round(row["price"], 2),
+        rows.append({"ticker": ticker, "sector": evidence.universe.get(ticker), "price": round(row["price"], 2),
                      "mom_6m_ex_1m": f"{row['long_momentum']:+.1%}", "mom_1m": f"{row['short_momentum']:+.1%}",
                      "vol_ann": f"{row['annualized_volatility']:.1%}", "max_dd_1y": f"{_max_drawdown(prices[ticker]):.1%}"})
     if rows:
@@ -288,8 +302,14 @@ def risk_section(evidence: RunEvidence, account_dir: Path) -> str:
         lines += [f"- {r.ticker} (rank {r.rank}): {r.reason}" for r in evidence.rejected.head(10).itertuples()]
 
     lines += ["", "Data-source status:"] + [f"- {k}: {v}" for k, v in evidence.source_status.items()]
-    missing = sorted(set(settings.UNIVERSE) - set(evidence.final_scores.index))
+    missing = sorted(set(evidence.universe) - set(evidence.final_scores.index))
     lines.append("Tickers with no usable price data: " + (", ".join(missing) or "none"))
+    if len(evidence.excluded):
+        lines.append(f"Ineligible universe stocks: {len(evidence.excluded)} "
+                     f"(for example {', '.join(evidence.excluded.index[:5])}).")
+    if evidence.quality_flags:
+        lines += ["Data-quality warnings, extreme one-day moves in the last 63 sessions (check before trusting):"]
+        lines += [f"- {t}: {move}" for t, move in sorted(evidence.quality_flags.items())[:20]]
     lines += ["", holdings_section(evidence, account_dir)]
     return "\n".join(lines)
 

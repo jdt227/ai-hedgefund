@@ -270,8 +270,11 @@ def sector_tilts(regime: str, etf_returns: dict[str, float]) -> dict[str, float]
     tilts: dict[str, float] = {}
     ranks = pd.Series(etf_returns, dtype=float).rank(pct=False)
     spread = (len(ranks) - 1) or 1
-    for sector in settings.DEFENSIVE_SECTORS + settings.CYCLICAL_SECTORS:
-        base = table["defensive"] if sector in settings.DEFENSIVE_SECTORS else table["cyclical"]
+    for sector in settings.DEFENSIVE_SECTORS + settings.CYCLICAL_SECTORS + settings.NEUTRAL_SECTORS:
+        if sector in settings.NEUTRAL_SECTORS:
+            base = 0.0
+        else:
+            base = table["defensive"] if sector in settings.DEFENSIVE_SECTORS else table["cyclical"]
         strength = 0.0
         if sector in ranks.index and len(ranks) > 1:
             strength = (2 * (ranks[sector] - 1) / spread - 1) * settings.SECTOR_RS_TILT_RANGE

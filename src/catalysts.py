@@ -205,10 +205,12 @@ def _fetch_filings(tickers: list[str], run_date: date, user_agent: str | None, r
     ciks = {row["ticker"]: row["cik_str"] for row in mapping.data.values()}
     missing, failed = [], 0
     for ticker in tickers:
-        if ticker not in ciks:
+        # SEC's file writes share classes like Yahoo does (BRK-B).
+        cik = ciks.get(ticker) or ciks.get(ticker.replace(".", "-"))
+        if cik is None:
             missing.append(ticker)
             continue
-        result = fetch("sec", SEC_SUBMISSIONS_URL.format(cik=int(ciks[ticker])), headers=headers,
+        result = fetch("sec", SEC_SUBMISSIONS_URL.format(cik=int(cik)), headers=headers,
                        run_date=run_date, min_interval=interval)
         if not result.ok:
             failed += 1

@@ -30,6 +30,8 @@ RETRY_STATUSES = {429, 500, 502, 503, 504}
 SECRET_PARAMS = {"api_key", "apikey", "token"}
 
 _last_request: dict[str, float] = {}
+# Real network requests per provider this process, for the run report.
+CALL_COUNTS: dict[str, int] = {}
 
 
 @dataclass
@@ -83,6 +85,7 @@ def fetch(provider: str, url: str, *, params: dict | None = None, headers: dict 
         if attempt:
             time.sleep(backoff ** attempt)
         _throttle(provider, min_interval)
+        CALL_COUNTS[provider] = CALL_COUNTS.get(provider, 0) + 1
         try:
             response = requests.get(url, params=params, headers=headers, timeout=timeout)
         except requests.RequestException as exc:

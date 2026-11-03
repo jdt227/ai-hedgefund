@@ -56,3 +56,16 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
   - ETFs are no longer allowed as strategy holdings, and banned products are rejected.
 - **Why:** the grade is FF3 alpha. The old 20% cash floor and 8% cap were our own limits, and cash scales alpha toward zero.
 - **Evidence:** none from this account. This follows from the grading metric, not a backtest. Higher concentration also raises the risk of a large drawdown.
+
+## Weekly model: S&P 500 universe and funnel — 2026-11-03
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:**
+  - The default universe is now a dated S&P 500 snapshot (`config/universe_sp500.csv`, 503 tickers), with `legacy33` still available.
+  - Eligibility filters: price of at least $5, median 63-day dollar volume of at least $50M, at least 252 sessions of history.
+  - Scores are measured against eligible stocks, with z-scores capped at +/-3.
+  - News and catalysts are fetched only for the top 50 plus holdings. Other stocks are not penalized.
+  - Real Estate joined with a neutral regime tilt.
+- **Why:** a wider universe gives the momentum and low-volatility signals more stocks to choose from. Capping stops one extreme stock from distorting every score: in a trial, MRNA's volatility z-score reached 15.7.
+- **Evidence:** none from this account. The list is today's S&P 500, so any historical test on it has survivorship bias.

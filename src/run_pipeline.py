@@ -12,16 +12,20 @@ import logging
 import os
 from pathlib import Path
 import sys
+import time
 
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from config import settings
+from src import http_utils
 from src.build_weight_prompt import RunEvidence, build_weight_prompt
 from src.catalysts import run_catalysts, vetoes
 from src.create_submission_placeholders import create_submission_files
-from src.data import download_price_data
+from src.account.inputs import DEFAULT_ACCOUNT_DIR, load_account
+from src.account.reconcile import reconcile
+from src.data import download_market_data, download_price_data
 from src.features import add_final_score, add_standardized_scores, calculate_features
 from src.macro import MacroResult, run_macro
 from src.market_data.provider import expected_last_completed_session
@@ -29,6 +33,8 @@ from src.news import run_news
 from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
 from src.reporting.audit_files import create_run_directory
 from src.reporting.weekly_sections import overlay_sections
+from src.universe import get_universe
+from src.universe.eligibility import eligibility_table, extreme_move_flags
 
 
 PROCESSED_DATA_DIR = Path("data/processed")
@@ -54,14 +60,53 @@ def overlays_enabled() -> bool:
 
 def uses_original_model() -> bool:
     """True only for the configuration that must reproduce the original price-only picks."""
-    return not overlays_enabled() and settings.PORTFOLIO_LIMITS == "legacy"
+    return (not overlays_enabled() and settings.PORTFOLIO_LIMITS == "legacy"
+            and settings.UNIVERSE_MODE == "legacy33")
 
 
-def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvidence:
+def held_tickers(account_dir: Path = DEFAULT_ACCOUNT_DIR) -> list[str]:
+    """Current positions, which are always analyzed even outside the universe."""
+    try:
+        return sorted(reconcile(load_account(account_dir)).positions["ticker"])
+    except Exception as exc:  # holdings are optional for research output
+        logger.warning("Holdings unavailable: %s", exc)
+        return []
+
+
+def score_universe(prices: pd.DataFrame, close: pd.DataFrame | None, volume: pd.DataFrame | None,
+                   universe: dict[str, str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Eligibility first, then scores measured against eligible stocks only."""
+    table = eligibility_table(universe, prices, close, volume)
+    features = calculate_features(prices)
+    if settings.UNIVERSE_MODE == "legacy33":
+        return add_standardized_scores(features), table
+    eligible = table.index[table["eligible"]]
+    return add_standardized_scores(features, settings.Z_SCORE_CAP, eligible), table
+
+
+def deep_funnel(scored: pd.DataFrame, table: pd.DataFrame, tilts: dict[str, float], universe: dict[str, str],
+                held: list[str]) -> list[str]:
+    """Top stocks by price score and sector tilt, plus holdings, get news and catalysts."""
+    eligible = [t for t in scored.index if t in table.index and table.at[t, "eligible"]]
+    if settings.UNIVERSE_MODE == "legacy33":
+        return [t for t in universe if t in scored.index]
+    prelim = {t: scored.at[t, "composite_score"] + settings.W_SECTOR_TILT * tilts.get(universe[t], 0.0)
+              for t in eligible}
+    top = sorted(prelim, key=lambda t: (-prelim[t], t))[: settings.FUNNEL_DEEP_N]
+    return top + [t for t in held if t not in top]
+
+
+def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd.DataFrame | None = None,
+              volume: pd.DataFrame | None = None, account_dir: Path = DEFAULT_ACCOUNT_DIR) -> RunEvidence:
     """Compute scores, overlays, and the portfolio from prices and environment keys."""
     status: dict[str, str] = {"yfinance_prices": f"ok through {prices.index[-1].date()}"}
-    scored = add_standardized_scores(calculate_features(prices))
-    universe = [t for t in settings.UNIVERSE if t in scored.index]
+    universe = get_universe()
+    held = held_tickers(account_dir)
+    scored, table = score_universe(prices, close, volume, universe)
+    excluded = table[~table["eligible"]]
+    status["eligibility"] = f"{int(table['eligible'].sum())}/{len(table)} universe stocks eligible"
+    quality = extreme_move_flags(prices[[c for c in prices.columns if c in universe or c in held]],
+                                 settings.EXTREME_DAILY_MOVE)
 
     fred_key = os.getenv("FRED_API_KEY") or None
     finnhub_key = os.getenv("FINNHUB_API_KEY") or None
@@ -74,10 +119,12 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvi
     status["macro"] = status.get("macro", macro.status)
     status.update(macro.source_status)
 
+    deep = deep_funnel(scored, table, macro.sector_tilts, universe, held)
+    status["funnel"] = f"{len(deep)} stocks get news and catalysts (top {settings.FUNNEL_DEEP_N} plus holdings)"
+
     news = None
     if settings.USE_NEWS_SENTIMENT:
-        by_rank = [t for t in scored.index if t in settings.UNIVERSE]
-        news = _guarded("news", status, lambda: run_news(universe, by_rank, run_date, now_utc, finnhub_key, av_key))
+        news = _guarded("news", status, lambda: run_news(deep, deep, run_date, now_utc, finnhub_key, av_key))
         if news is not None:
             status.update(news.source_status)
     else:
@@ -87,25 +134,26 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvi
     if settings.USE_CATALYST_FLAGS:
         sentiment = news.sentiment if news is not None else None
         catalysts = _guarded("catalysts", status,
-                             lambda: run_catalysts(universe, sentiment, run_date, finnhub_key, sec_agent))
+                             lambda: run_catalysts(deep, sentiment, run_date, finnhub_key, sec_agent))
         if catalysts is not None:
             status.update(catalysts.source_status)
     else:
         status["catalysts"] = "disabled"
 
-    final = add_final_score(scored, settings.UNIVERSE, macro.sector_tilts,
+    final = add_final_score(scored, universe, macro.sector_tilts,
                             news.sentiment["sentiment_z"] if news is not None else None)
     vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
 
     if not uses_original_model():
-        portfolio, rejected, failures = build_competition_portfolio(final, macro.cash_target_pct, vetoed)
+        selectable = {t: sector for t, sector in universe.items() if table.at[t, "eligible"]}
+        portfolio, rejected, failures = build_competition_portfolio(final, macro.cash_target_pct, vetoed, selectable)
     else:
         portfolio = build_portfolio(scored)
         portfolio["weight_pct"] = (portfolio["target_weight"] * 100).round().astype(int)
         rejected = pd.DataFrame(columns=["ticker", "sector", "rank", "final_score", "reason"])
         failures = []
     return RunEvidence(run_date, now_utc, prices, final, portfolio, rejected, failures, vetoed, macro,
-                       news, catalysts, status)
+                       news, catalysts, status, universe, excluded, quality, deep)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -122,6 +170,7 @@ def main(argv: list[str] | None = None) -> None:
 
     load_dotenv()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    started = time.monotonic()
     run_date = date.today().isoformat()
     now_utc = datetime.now(timezone.utc)
 
@@ -129,14 +178,19 @@ def main(argv: list[str] | None = None) -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print("1/4 Downloading daily prices...")
-    prices = download_price_data(start="2020-01-01")
+    close, volume = None, None
+    if settings.UNIVERSE_MODE == "legacy33":
+        prices = download_price_data(start="2020-01-01")
+    else:
+        market = download_market_data(list(get_universe()) + held_tickers(), now_utc)
+        prices, close, volume = market.prices, market.close, market.volume
     if not uses_original_model():
         # Use completed sessions only, so nothing from an unfinished day enters the signals.
         last = expected_last_completed_session(now_utc)
         prices = prices.loc[prices.index.date <= last]
 
     print("2/4 Calculating signals and fetching macro and news (first run of the day can take minutes)...")
-    evidence = build_run(prices, date.today(), now_utc)
+    evidence = build_run(prices, date.today(), now_utc, close, volume)
     scored_features = evidence.final_scores
 
     print("3/4 Building constrained portfolio...")
@@ -223,6 +277,8 @@ def main(argv: list[str] | None = None) -> None:
     print("\nData sources:")
     for name, state in evidence.source_status.items():
         print(f"  {name}: {state}")
+    print(f"\nNetwork calls this run: {http_utils.CALL_COUNTS or 'none (all cached)'}; "
+          f"runtime {time.monotonic() - started:.0f}s")
     print(f"\nSaved report: {report_path}")
     print(f"Weight prompt: {prompt_path}")
     print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
