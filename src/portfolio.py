@@ -3,8 +3,14 @@ import math
 import pandas as pd
 
 from config.settings import (
+    MAX_EQUITY_PCT,
+    MAX_HOLDINGS,
+    MAX_POSITION_PCT,
     MAX_POSITION_WEIGHT,
+    MAX_SECTOR_PCT,
     MAX_SECTOR_WEIGHT,
+    MIN_CASH_PCT,
+    MIN_HOLDINGS,
     STARTING_CAPITAL,
     TOP_N_HOLDINGS,
     UNIVERSE,
@@ -85,3 +91,90 @@ def summarize_sector_weights(portfolio: pd.DataFrame) -> pd.DataFrame:
         .sort_values("actual_weight", ascending=False)
         .rename(columns={"actual_weight": "sector_weight"})
     )
+
+
+def whole_percent_weights(equity_pct: int, holdings: int) -> list[int]:
+    """Split whole percentage points across holdings, largest weights first."""
+    base, extra = divmod(equity_pct, holdings)
+    return [base + 1] * extra + [base] * (holdings - extra)
+
+
+def holdings_needed(equity_pct: int) -> int:
+    """Smallest allowed holdings count that fits the equity under the position cap."""
+    for count in range(MIN_HOLDINGS, MAX_HOLDINGS + 1):
+        if count * MAX_POSITION_PCT >= equity_pct:
+            return count
+    return MAX_HOLDINGS
+
+
+def _sector_ok(tickers: list[str], weights: list[int], sectors: dict[str, str]) -> bool:
+    totals: dict[str, int] = {}
+    for ticker, weight in zip(tickers, weights):
+        totals[sectors[ticker]] = totals.get(sectors[ticker], 0) + weight
+    return all(total <= MAX_SECTOR_PCT for total in totals.values())
+
+
+def build_competition_portfolio(
+    scored: pd.DataFrame,
+    cash_target_pct: int = MIN_CASH_PCT,
+    vetoed: dict[str, str] | None = None,
+    sectors: dict[str, str] = UNIVERSE,
+    capital: float = STARTING_CAPITAL,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """
+    Select by final_score under every competition rule.
+
+    Returns (portfolio, rejected candidates, rule failures). Only universe stocks
+    can be selected. When too few names survive, cash rises rather than a cap
+    being broken, and fewer than the minimum holdings is reported as a failure.
+    """
+    vetoed = vetoed or {}
+    cash_pct = max(MIN_CASH_PCT, int(cash_target_pct))
+    equity_pct = min(MAX_EQUITY_PCT, 100 - cash_pct)
+    count = holdings_needed(equity_pct)
+    slots = whole_percent_weights(equity_pct, count)
+
+    ranked = scored[scored.index.isin(list(sectors))]
+    selected: list[str] = []
+    rejected: list[dict] = []
+    sector_totals: dict[str, int] = {}
+
+    for rank, (ticker, row) in enumerate(ranked.iterrows(), start=1):
+        reason = None
+        sector = sectors[ticker]
+        if ticker in vetoed:
+            reason = f"veto: {vetoed[ticker]}"
+        elif len(selected) < count:
+            weight = slots[len(selected)]
+            if sector_totals.get(sector, 0) + weight > MAX_SECTOR_PCT:
+                reason = f"sector cap: {sector} would exceed {MAX_SECTOR_PCT}%"
+            else:
+                selected.append(ticker)
+                sector_totals[sector] = sector_totals.get(sector, 0) + weight
+        if reason:
+            rejected.append({"ticker": ticker, "sector": sector, "rank": rank,
+                             "final_score": row["final_score"], "reason": reason})
+
+    failures: list[str] = []
+    if len(selected) < MIN_HOLDINGS:
+        failures.append(
+            f"Only {len(selected)} stocks survived vetoes and caps; the rules require "
+            f"at least {MIN_HOLDINGS}."
+        )
+
+    # With fewer names than slots, deploy less rather than break a cap.
+    invested = min(equity_pct, len(selected) * MAX_POSITION_PCT)
+    while selected and not _sector_ok(selected, whole_percent_weights(invested, len(selected)), sectors):
+        invested -= 1
+    weights = whole_percent_weights(invested, len(selected)) if selected else []
+
+    portfolio = ranked.loc[selected].reset_index().rename(columns={"index": "ticker"})
+    portfolio.insert(1, "sector", [sectors[t] for t in selected])
+    portfolio["weight_pct"] = weights
+    portfolio["target_weight"] = portfolio["weight_pct"] / 100
+    portfolio["target_dollars"] = portfolio["target_weight"] * capital
+    portfolio["shares"] = (portfolio["target_dollars"] / portfolio["price"]).apply(math.floor)
+    portfolio["actual_dollars"] = portfolio["shares"] * portfolio["price"]
+    portfolio["actual_weight"] = portfolio["actual_dollars"] / capital
+    portfolio["cash_remaining_after_trade"] = capital - portfolio["actual_dollars"].sum()
+    return portfolio, pd.DataFrame(rejected, columns=["ticker", "sector", "rank", "final_score", "reason"]), failures

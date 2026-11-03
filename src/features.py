@@ -4,7 +4,10 @@ import pandas as pd
 from config.settings import (
     MOMENTUM_LONG_WINDOW,
     MOMENTUM_SHORT_WINDOW,
+    SENTIMENT_Z_CLIP,
     VOLATILITY_WINDOW,
+    W_SECTOR_TILT,
+    W_SENTIMENT,
 )
 
 
@@ -79,3 +82,40 @@ def add_standardized_scores(features: pd.DataFrame) -> pd.DataFrame:
     )
 
     return scored.sort_values("composite_score", ascending=False)
+
+
+def add_final_score(
+    scored: pd.DataFrame,
+    sectors: dict[str, str],
+    sector_tilts: dict[str, float] | None = None,
+    sentiment_z: pd.Series | None = None,
+    w_sector: float = W_SECTOR_TILT,
+    w_sentiment: float = W_SENTIMENT,
+) -> pd.DataFrame:
+    """
+    final_score = composite_score + w_sector * sector_tilt + w_sentiment * sentiment_z
+
+    Missing tilts and sentiment count as 0, so with no overlay data the final
+    score equals the composite score and the ranking does not change.
+    """
+    out = scored.copy()
+    tilts = sector_tilts or {}
+    out["sector_tilt"] = [
+        float(tilts.get(sectors.get(ticker), 0.0)) for ticker in out.index
+    ]
+    if sentiment_z is None:
+        out["sentiment_z"] = 0.0
+    else:
+        out["sentiment_z"] = (
+            sentiment_z.reindex(out.index)
+            .fillna(0.0)
+            .clip(-SENTIMENT_Z_CLIP, SENTIMENT_Z_CLIP)
+        )
+    out["sector_contribution"] = w_sector * out["sector_tilt"]
+    out["sentiment_contribution"] = w_sentiment * out["sentiment_z"]
+    out["final_score"] = (
+        out["composite_score"]
+        + out["sector_contribution"]
+        + out["sentiment_contribution"]
+    )
+    return out.sort_values("final_score", ascending=False, kind="stable")

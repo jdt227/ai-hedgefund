@@ -23,7 +23,8 @@ def download_price_data(start: str = "2020-01-01") -> pd.DataFrame:
         group_by="column",
     )["Close"]
 
-    prices = prices.dropna(axis=1, how="all").sort_index()
+    # Yahoo can return an all-empty row for a session it has not finalized.
+    prices = prices.dropna(axis=1, how="all").dropna(axis=0, how="all").sort_index()
     prices.index.name = "date"
 
     output_path = RAW_DATA_DIR / "adjusted_close_prices.csv"
