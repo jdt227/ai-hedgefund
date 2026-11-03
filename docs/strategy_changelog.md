@@ -23,3 +23,16 @@ so you can copy them here and into class forms.
   a result fitted to a backtest.
 - **Supersedes:** the legacy hypothetical $100k pipeline (`src/run_pipeline.py`).
   That pipeline is unchanged and still runnable, but it is not account-aware.
+
+## Weekly model: news and macro overlays — 2026-11-03
+
+This entry covers `src.run_pipeline`. It does not change `quant-baseline-1.0.0`.
+
+- **What:**
+  - Macro regime sets target cash at 20%, 25%, or 35% and adds small sector tilts.
+  - News sentiment adds a bounded score adjustment.
+  - Catalyst flags report risks, and `negative_catalyst` removes a stock before selection.
+  - The base score is unchanged: 6M-ex-1M momentum, 1M momentum, and volatility.
+  - The model now selects only universe stocks and uses whole-percent weights.
+- **Why:** to inform weekly decisions with dated, sourced macro and company evidence, and to replace the prompt's placeholder sections.
+- **Evidence:** none yet. News history is too short to backtest, and the starting weights are judgment calls. Each run now archives its evidence so later comparisons are possible. Toggles in `config/settings.py` allow runs with and without each signal.

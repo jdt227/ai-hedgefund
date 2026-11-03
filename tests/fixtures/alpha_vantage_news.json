@@ -1,0 +1,5 @@
+{"feed": [
+ {"ticker_sentiment": [{"ticker": "XMP", "relevance_score": "0.5", "ticker_sentiment_score": "0.4"},
+                       {"ticker": "OTHER", "relevance_score": "0.9", "ticker_sentiment_score": "-0.9"}]},
+ {"ticker_sentiment": [{"ticker": "XMP", "relevance_score": "0.5", "ticker_sentiment_score": "0.2"}]}
+]}

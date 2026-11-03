@@ -1,0 +1,5 @@
+[
+ {"period": "2030-02-01", "strongBuy": 50, "buy": 50, "hold": 0, "sell": 0, "strongSell": 0, "symbol": "XMP"},
+ {"period": "2030-01-01", "strongBuy": 5, "buy": 10, "hold": 5, "sell": 1, "strongSell": 0, "symbol": "XMP"},
+ {"period": "2029-12-01", "strongBuy": 8, "buy": 10, "hold": 5, "sell": 0, "strongSell": 0, "symbol": "XMP"}
+]

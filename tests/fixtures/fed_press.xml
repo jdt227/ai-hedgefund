@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"><channel><title>Press</title>
+<item><title>Fictional FOMC statement</title><link>https://example.com/fomc</link><pubDate>Mon, 14 Jan 2030 19:00:00 GMT</pubDate></item>
+<item><title>Release from the future</title><link>https://example.com/later</link><pubDate>Fri, 01 Feb 2030 19:00:00 GMT</pubDate></item>
+</channel></rss>

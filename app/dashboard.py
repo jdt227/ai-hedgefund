@@ -36,6 +36,9 @@ if not PORTFOLIO_PATH.exists():
 
 portfolio = pd.read_csv(PORTFOLIO_PATH)
 sector_weights = pd.read_csv(SECTOR_PATH)
+if portfolio.empty:
+    st.error("The latest run could not build a portfolio. See its report for the rule failure.")
+    st.stop()
 prices = load_price_data()
 
 

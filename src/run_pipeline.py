@@ -153,7 +153,10 @@ def main(argv: list[str] | None = None) -> None:
     report_path = REPORTS_DIR / f"portfolio_report_{run_date}.md"
 
     total_invested = portfolio["actual_dollars"].sum()
-    cash_remaining = portfolio["cash_remaining_after_trade"].iloc[0]
+    # Empty when vetoes and caps leave no stock; the rule failure is reported below.
+    cash_remaining = (
+        portfolio["cash_remaining_after_trade"].iloc[0] if len(portfolio) else settings.STARTING_CAPITAL
+    )
 
     lines = [
         f"# AI Hedge Fund — Rules-Based Portfolio Report",

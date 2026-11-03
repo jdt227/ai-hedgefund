@@ -1,0 +1,6 @@
+[
+ {"datetime": 1894600000, "headline": "XMP wins great record contract, excellent growth", "source": "Fictional Wire", "summary": "Fictional.", "url": "https://example.com/a"},
+ {"datetime": 1894610000, "headline": "XMP wins great record contract, excellent growth!", "source": "Other Wire", "summary": "Same story.", "url": "https://example.com/b"},
+ {"datetime": 1894620000, "headline": "XMP faces terrible lawsuit and awful losses", "source": "Fictional Wire", "summary": "", "url": "https://example.com/c"},
+ {"datetime": 2000000000, "headline": "Story from the future must be dropped", "source": "Fictional Wire", "summary": "", "url": "https://example.com/future"}
+]
