@@ -98,7 +98,7 @@ def test_no_keys_completes_as_momentum_only():
     assert evidence.macro.status == "skipped" and evidence.macro.regime is None
     assert (evidence.final_scores["final_score"] == evidence.final_scores["composite_score"]).all()
     assert evidence.vetoed == {} and not evidence.rule_failures
-    assert 100 - evidence.portfolio["weight_pct"].sum() == settings.MIN_CASH_PCT
+    assert 100 - evidence.portfolio["weight_pct"].sum() == settings.limits()['min_cash_pct']
     assert evidence.source_status["fred"].startswith("skipped")
     assert evidence.source_status["sec_edgar"].startswith("skipped")
     assert evidence.source_status["sentiment_scoring"].startswith("skipped")
@@ -138,7 +138,7 @@ def test_module_crash_is_contained_and_reported(monkeypatch):
     monkeypatch.setattr(run_pipeline, "run_news", boom)
     monkeypatch.setattr(run_pipeline, "run_catalysts", boom)
     evidence = run_pipeline.build_run(universe_prices(), RUN, NOW)
-    assert len(evidence.portfolio) == settings.MAX_HOLDINGS
+    assert len(evidence.portfolio) == settings.limits()['max_holdings']
     assert "unavailable" in evidence.source_status["macro"]
     assert "unavailable" in evidence.source_status["news"]
 
@@ -162,8 +162,8 @@ def test_all_keys_run_uses_every_source_and_keeps_rules(monkeypatch):
     assert not evidence.news.articles["headline"].str.contains("future").any()
     weights = evidence.portfolio["weight_pct"]
     assert 100 - weights.sum() == evidence.macro.cash_target_pct
-    assert weights.max() <= settings.MAX_POSITION_PCT
-    assert evidence.portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.MAX_SECTOR_PCT
+    assert weights.max() <= settings.limits()['max_position_pct']
+    assert evidence.portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.limits()['max_sector_pct']
     assert not evidence.rule_failures
 
 
@@ -336,11 +336,11 @@ def test_placeholder_rules_match_settings():
     from src.build_weight_prompt import build_instructions
 
     rules = [
-        f"Select {settings.MIN_HOLDINGS} to {settings.MAX_HOLDINGS} long-only",
-        f"Maximum individual stock weight: {settings.MAX_POSITION_PCT}%",
-        f"Maximum sector weight: {settings.MAX_SECTOR_PCT}%",
-        f"Maximum total equity allocation: {settings.MAX_EQUITY_PCT}%",
-        f"Minimum cash allocation: {settings.MIN_CASH_PCT}%",
+        f"Select {settings.limits()['min_holdings']} to {settings.limits()['max_holdings']} long-only",
+        f"Maximum individual stock weight: {settings.limits()['max_position_pct']}%",
+        f"Maximum sector weight: {settings.limits()['max_sector_pct']}%",
+        f"Maximum total equity allocation: {settings.limits()['max_equity_pct']}%",
+        f"Minimum cash allocation: {settings.limits()['min_cash_pct']}%",
     ]
     old, new = placeholder("2030-01-15"), build_instructions(RUN, UntrustedBlocks("T"))
     for rule in rules:

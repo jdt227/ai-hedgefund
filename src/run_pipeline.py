@@ -52,6 +52,11 @@ def overlays_enabled() -> bool:
     return settings.USE_MACRO_REGIME or settings.USE_NEWS_SENTIMENT or settings.USE_CATALYST_FLAGS
 
 
+def uses_original_model() -> bool:
+    """True only for the configuration that must reproduce the original price-only picks."""
+    return not overlays_enabled() and settings.PORTFOLIO_LIMITS == "legacy"
+
+
 def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvidence:
     """Compute scores, overlays, and the portfolio from prices and environment keys."""
     status: dict[str, str] = {"yfinance_prices": f"ok through {prices.index[-1].date()}"}
@@ -92,7 +97,7 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvi
                             news.sentiment["sentiment_z"] if news is not None else None)
     vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
 
-    if overlays_enabled():
+    if not uses_original_model():
         portfolio, rejected, failures = build_competition_portfolio(final, macro.cash_target_pct, vetoed)
     else:
         portfolio = build_portfolio(scored)
@@ -125,7 +130,7 @@ def main(argv: list[str] | None = None) -> None:
 
     print("1/4 Downloading daily prices...")
     prices = download_price_data(start="2020-01-01")
-    if overlays_enabled():
+    if not uses_original_model():
         # Use completed sessions only, so nothing from an unfinished day enters the signals.
         last = expected_last_completed_session(now_utc)
         prices = prices.loc[prices.index.date <= last]
@@ -151,6 +156,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     report_path = REPORTS_DIR / f"portfolio_report_{run_date}.md"
+    limits = settings.limits()
 
     total_invested = portfolio["actual_dollars"].sum()
     # Empty when vetoes and caps leave no stock; the rule failure is reported below.
@@ -191,8 +197,10 @@ def main(argv: list[str] | None = None) -> None:
         (
             "Stocks are ranked by a composite of long-term momentum, "
             "short-term momentum, and trailing annualized volatility. "
-            "The portfolio applies an 8% maximum position weight, a 25% "
-            "sector limit, and a maximum of 10 positions. Share counts use a "
+            f"Strategy limits (profile {settings.PORTFOLIO_LIMITS}, our own choices, not class rules): "
+            f"{limits['max_position_pct']}% per stock, {limits['max_sector_pct']}% per sector, "
+            f"{limits['min_holdings']}-{limits['max_holdings']} positions, at least {limits['min_cash_pct']}% cash. "
+            "Share counts use a "
             "hypothetical capital figure, not your account."
         ),
         "",

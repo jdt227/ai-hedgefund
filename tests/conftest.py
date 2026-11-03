@@ -29,6 +29,14 @@ def base_metadata(**overrides) -> dict:
     return meta
 
 
+@pytest.fixture(autouse=True)
+def legacy_configuration(monkeypatch):
+    """Existing regression tests pin the legacy profile. New tests switch explicitly."""
+    from config import settings
+
+    monkeypatch.setattr(settings, "PORTFOLIO_LIMITS", "legacy")
+
+
 @pytest.fixture
 def make_account(tmp_path):
     """Write an account directory and return its path."""

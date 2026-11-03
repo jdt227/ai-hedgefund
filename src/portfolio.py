@@ -2,15 +2,10 @@ import math
 
 import pandas as pd
 
+from config import settings
 from config.settings import (
-    MAX_EQUITY_PCT,
-    MAX_HOLDINGS,
-    MAX_POSITION_PCT,
     MAX_POSITION_WEIGHT,
-    MAX_SECTOR_PCT,
     MAX_SECTOR_WEIGHT,
-    MIN_CASH_PCT,
-    MIN_HOLDINGS,
     STARTING_CAPITAL,
     TOP_N_HOLDINGS,
     UNIVERSE,
@@ -101,36 +96,39 @@ def whole_percent_weights(equity_pct: int, holdings: int) -> list[int]:
 
 def holdings_needed(equity_pct: int) -> int:
     """Smallest allowed holdings count that fits the equity under the position cap."""
-    for count in range(MIN_HOLDINGS, MAX_HOLDINGS + 1):
-        if count * MAX_POSITION_PCT >= equity_pct:
+    limits = settings.limits()
+    for count in range(limits["min_holdings"], limits["max_holdings"] + 1):
+        if count * limits["max_position_pct"] >= equity_pct:
             return count
-    return MAX_HOLDINGS
+    return limits["max_holdings"]
 
 
 def _sector_ok(tickers: list[str], weights: list[int], sectors: dict[str, str]) -> bool:
     totals: dict[str, int] = {}
     for ticker, weight in zip(tickers, weights):
         totals[sectors[ticker]] = totals.get(sectors[ticker], 0) + weight
-    return all(total <= MAX_SECTOR_PCT for total in totals.values())
+    return all(total <= settings.limits()["max_sector_pct"] for total in totals.values())
 
 
 def build_competition_portfolio(
     scored: pd.DataFrame,
-    cash_target_pct: int = MIN_CASH_PCT,
+    cash_target_pct: int | None = None,
     vetoed: dict[str, str] | None = None,
     sectors: dict[str, str] = UNIVERSE,
     capital: float = STARTING_CAPITAL,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     """
-    Select by final_score under every competition rule.
+    Select by final_score under the class rules and the active strategy limits.
 
     Returns (portfolio, rejected candidates, rule failures). Only universe stocks
-    can be selected. When too few names survive, cash rises rather than a cap
-    being broken, and fewer than the minimum holdings is reported as a failure.
+    can be selected. When too few names survive, cash rises rather than a limit
+    being broken, and any shortfall is reported as a failure.
     """
+    limits = settings.limits()
+    max_sector = limits["max_sector_pct"]
     vetoed = vetoed or {}
-    cash_pct = max(MIN_CASH_PCT, int(cash_target_pct))
-    equity_pct = min(MAX_EQUITY_PCT, 100 - cash_pct)
+    cash_pct = max(limits["min_cash_pct"], limits["min_cash_pct"] if cash_target_pct is None else int(cash_target_pct))
+    equity_pct = min(limits["max_equity_pct"], 100 - cash_pct)
     count = holdings_needed(equity_pct)
     slots = whole_percent_weights(equity_pct, count)
 
@@ -146,8 +144,8 @@ def build_competition_portfolio(
             reason = f"veto: {vetoed[ticker]}"
         elif len(selected) < count:
             weight = slots[len(selected)]
-            if sector_totals.get(sector, 0) + weight > MAX_SECTOR_PCT:
-                reason = f"sector cap: {sector} would exceed {MAX_SECTOR_PCT}%"
+            if sector_totals.get(sector, 0) + weight > max_sector:
+                reason = f"sector limit: {sector} would exceed {max_sector}%"
             else:
                 selected.append(ticker)
                 sector_totals[sector] = sector_totals.get(sector, 0) + weight
@@ -156,14 +154,19 @@ def build_competition_portfolio(
                              "final_score": row["final_score"], "reason": reason})
 
     failures: list[str] = []
-    if len(selected) < MIN_HOLDINGS:
+    if len(selected) < limits["min_holdings"]:
         failures.append(
-            f"Only {len(selected)} stocks survived vetoes and caps; the rules require "
-            f"at least {MIN_HOLDINGS}."
+            f"Only {len(selected)} stocks survived vetoes and limits; the strategy limit requires "
+            f"at least {limits['min_holdings']}."
+        )
+    if len(selected) < settings.CLASS_RULES["min_stocks"]:
+        failures.append(
+            f"CLASS RULE RISK: only {len(selected)} stocks selected; the class requires at least "
+            f"{settings.CLASS_RULES['min_stocks']}."
         )
 
-    # With fewer names than slots, deploy less rather than break a cap.
-    invested = min(equity_pct, len(selected) * MAX_POSITION_PCT)
+    # With fewer names than slots, deploy less rather than break a limit.
+    invested = min(equity_pct, len(selected) * limits["max_position_pct"])
     while selected and not _sector_ok(selected, whole_percent_weights(invested, len(selected)), sectors):
         invested -= 1
     weights = whole_percent_weights(invested, len(selected)) if selected else []

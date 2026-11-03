@@ -24,17 +24,17 @@ def scored_universe(seed=0, tickers=None):
 def assert_rules(portfolio, failures):
     assert not failures
     weights = portfolio["weight_pct"]
-    assert settings.MIN_HOLDINGS <= len(portfolio) <= settings.MAX_HOLDINGS
+    assert settings.limits()['min_holdings'] <= len(portfolio) <= settings.limits()['max_holdings']
     assert (weights == weights.astype(int)).all()
-    assert weights.max() <= settings.MAX_POSITION_PCT
-    assert weights.sum() <= settings.MAX_EQUITY_PCT
-    assert 100 - weights.sum() >= settings.MIN_CASH_PCT
-    assert portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.MAX_SECTOR_PCT
+    assert weights.max() <= settings.limits()['max_position_pct']
+    assert weights.sum() <= settings.limits()['max_equity_pct']
+    assert 100 - weights.sum() >= settings.limits()['min_cash_pct']
+    assert portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.limits()['max_sector_pct']
     assert set(portfolio["ticker"]) <= set(settings.UNIVERSE)
 
 
 @pytest.mark.parametrize("seed", range(25))
-@pytest.mark.parametrize("cash", sorted(settings.REGIME_CASH_TARGET_PCT.values()) + [20, 30, 40, 50, 60])
+@pytest.mark.parametrize("cash", sorted(settings.LEGACY_REGIME_CASH_TARGET_PCT.values()) + [20, 30, 40, 50, 60])
 def test_rules_hold_under_every_regime_and_score_order(seed, cash):
     final = add_final_score(scored_universe(seed), settings.UNIVERSE)
     portfolio, _, failures = build_competition_portfolio(final, cash)
@@ -47,7 +47,7 @@ def test_cash_target_below_minimum_is_raised(cash):
     final = add_final_score(scored_universe(), settings.UNIVERSE)
     portfolio, _, failures = build_competition_portfolio(final, cash)
     assert_rules(portfolio, failures)
-    assert 100 - portfolio["weight_pct"].sum() == settings.MIN_CASH_PCT
+    assert 100 - portfolio["weight_pct"].sum() == settings.limits()['min_cash_pct']
 
 
 @pytest.mark.parametrize("equity,count", [(80, 10), (75, 10), (72, 9), (65, 9), (64, 8), (40, 8)])
@@ -83,7 +83,7 @@ def test_sector_cap_rejections_are_recorded():
     portfolio, rejected, failures = build_competition_portfolio(final, 20)
     assert_rules(portfolio, failures)
     assert (portfolio["sector"] == "Technology").sum() == 3
-    assert rejected["reason"].str.contains("sector cap").sum() == len(tech) - 3
+    assert rejected["reason"].str.contains("sector limit").sum() == len(tech) - 3
 
 
 def test_too_few_names_reports_failure_without_breaking_caps():
@@ -92,8 +92,8 @@ def test_too_few_names_reports_failure_without_breaking_caps():
     vetoed = {t: "test" for t in final.index if t not in keep}
     portfolio, _, failures = build_competition_portfolio(final, 20, vetoed)
     assert len(portfolio) == 5 and failures
-    assert portfolio["weight_pct"].max() <= settings.MAX_POSITION_PCT
-    assert portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.MAX_SECTOR_PCT
+    assert portfolio["weight_pct"].max() <= settings.limits()['max_position_pct']
+    assert portfolio.groupby("sector")["weight_pct"].sum().max() <= settings.limits()['max_sector_pct']
 
 
 def test_everything_vetoed_gives_empty_portfolio_and_failure():

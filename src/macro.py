@@ -1,11 +1,11 @@
 """Macro data, a rules-based regime call, and its two bounded outputs.
 
 Macro is an overlay, not a stock picker. It only sets:
-  * the target cash level (never below the 20% competition minimum), and
+  * the target cash level (never below the active profile's minimum), and
   * small per-sector score tilts.
 
 Sources: FRED API (needs a free key) and sector ETFs / SPY from yfinance.
-Without FRED data the module reports "skipped": cash stays at the minimum and all
+Without FRED data the module reports "skipped": cash stays at the profile minimum and all
 tilts are zero, which leaves the price-only ranking unchanged.
 """
 
@@ -55,7 +55,7 @@ class MacroResult:
     regime: str | None = None
     regime_score: int | None = None
     dimensions: dict[str, dict] = field(default_factory=dict)
-    cash_target_pct: int = settings.MIN_CASH_PCT
+    cash_target_pct: int = field(default_factory=lambda: settings.limits()["min_cash_pct"])
     sector_tilts: dict[str, float] = field(default_factory=dict)
     headlines: list[dict] = field(default_factory=list)
     source_status: dict[str, str] = field(default_factory=dict)
@@ -257,10 +257,11 @@ def classify_regime(indicators: dict[str, Indicator],
 
 
 def cash_target(regime: str | None) -> int:
-    """Target cash percent for a regime. The competition minimum always holds."""
+    """Target cash percent for a regime. The active profile's minimum always holds."""
+    minimum = settings.limits()["min_cash_pct"]
     if regime is None:
-        return settings.MIN_CASH_PCT
-    return max(settings.MIN_CASH_PCT, settings.REGIME_CASH_TARGET_PCT[regime])
+        return minimum
+    return max(minimum, settings.regime_cash_table()[regime])
 
 
 def sector_tilts(regime: str, etf_returns: dict[str, float]) -> dict[str, float]:

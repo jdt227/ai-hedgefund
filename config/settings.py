@@ -60,14 +60,51 @@ W_SECTOR_TILT = 0.15
 W_SENTIMENT = 0.10
 SENTIMENT_Z_CLIP = 2.0
 
-# Competition rules (source of truth: src/create_submission_placeholders.py).
-MIN_HOLDINGS = 8
-MAX_HOLDINGS = 10
-MIN_CASH_PCT = 20
-MAX_EQUITY_PCT = 80
-MAX_POSITION_PCT = 8
-MAX_SECTOR_PCT = 25
-MIN_BUY_ORDERS_PER_MONTH = 5  # tracked and reported only; does not affect selection
+# Class rules come from the assignment. A failure is a grade risk.
+CLASS_RULES = {
+    "min_stocks": 5,                    # held at all times; ETFs do not count
+    "min_buy_orders_per_month": 5,      # rebalancing buys count
+    "month_timezone": "America/New_York",
+    "allowed_products": ["equities", "ETFs"],
+    "banned_products": ["crypto", "options", "leveraged or inverse products"],
+    "game": "trades must be placed in the class game",
+    "strategy_changes": "every strategy change requires a submitted form",
+    "graded_metric": "Fama-French 3-factor alpha, ranked against the class",
+}
+
+# Strategy limits are our own choices, not class rules. Whole-percent weights
+# summing to 100 with CASH is a format rule and applies to every profile.
+PORTFOLIO_LIMIT_PROFILES = {
+    "legacy": {"min_holdings": 8, "max_holdings": 10, "max_position_pct": 8,
+               "max_sector_pct": 25, "min_cash_pct": 20, "max_equity_pct": 80},
+    "alpha_v1": {"min_holdings": 5, "max_holdings": 10, "max_position_pct": 12,
+                 "max_sector_pct": 35, "min_cash_pct": 5, "max_equity_pct": 95},
+}
+PORTFOLIO_LIMITS = "alpha_v1"
+
+OBJECTIVE_STATEMENT = (
+    "Objective: maximize expected FF3 alpha. Returns explained by market, size (SMB), or value "
+    "(HML) exposure earn no credit. Momentum and low-volatility returns are not FF3 factors, so "
+    "they can show up as alpha. Cash and SPY have roughly zero alpha and scale the portfolio's "
+    "alpha down, so hold extra cash only with a stated, evidence-based reason."
+)
+
+# ETFs are allowed by the class. Our strategy picks stocks because an index ETF
+# adds roughly zero alpha. This is a config choice, not a rule.
+ALLOW_ETF_HOLDINGS = False
+ETF_TICKERS = {
+    "SPY", "VOO", "IVV", "QQQ", "VTI", "DIA", "IWM", "IWB", "IWD", "IWF",
+    "XLK", "XLF", "XLE", "XLV", "XLP", "XLY", "XLI", "XLB", "XLU", "XLC", "XLRE",
+}
+# Maintained list of banned products that name patterns may miss: ticker -> why.
+BANNED_TICKERS = {
+    **{t: "leveraged ETF" for t in ("TQQQ", "QLD", "SSO", "UPRO", "SPXL", "UDOW", "TNA", "SOXL",
+                                    "FNGU", "TECL", "NVDL", "TSLL", "MSTU", "MSTX", "CONL")},
+    **{t: "inverse ETF" for t in ("SQQQ", "PSQ", "SH", "SDS", "SPXU", "SPXS", "DOG", "DXD", "SDOW",
+                                  "RWM", "TZA", "SOXS", "FNGD", "TECS", "TSLQ", "TSLS", "NVDD")},
+    **{t: "crypto ETF" for t in ("IBIT", "FBTC", "GBTC", "BITB", "ARKB", "HODL", "BTCO", "BITO",
+                                 "BTC", "ETHA", "ETHE", "FETH", "ETH", "BITX")},
+}
 
 NEWS_LOOKBACK_DAYS = 7
 EARNINGS_WINDOW_DAYS = 7
@@ -127,7 +164,8 @@ REGIME_THRESHOLDS = {
 }
 REGIME_RISK_ON_MIN_SCORE = 2
 REGIME_RISK_OFF_MAX_SCORE = -2
-REGIME_CASH_TARGET_PCT = {"risk_on": 20, "neutral": 25, "risk_off": 35}
+REGIME_CASH_TARGET_PCT = {"risk_on": 5, "neutral": 5, "risk_off": 15}  # alpha_v1
+LEGACY_REGIME_CASH_TARGET_PCT = {"risk_on": 20, "neutral": 25, "risk_off": 35}
 
 # Sector tilt in z-units = regime table + ETF relative strength, clipped to the limit.
 SECTOR_TILT_LIMIT = 0.3
@@ -167,3 +205,13 @@ MACRO_HEADLINE_KEYWORDS = [
     "oil", "shutdown", "midterm", "midterms", "economy", "economic",
 ]
 PROMPT_MAX_TEXT_CHARS = 300
+
+
+def limits() -> dict:
+    """Strategy limits for the active profile."""
+    return PORTFOLIO_LIMIT_PROFILES[PORTFOLIO_LIMITS]
+
+
+def regime_cash_table() -> dict[str, int]:
+    """Target cash by regime for the active profile."""
+    return LEGACY_REGIME_CASH_TARGET_PCT if PORTFOLIO_LIMITS == "legacy" else REGIME_CASH_TARGET_PCT

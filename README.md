@@ -35,17 +35,31 @@ The validator prints a pass/fail table and writes `final_allocation.csv` only if
 
 `python -m src.run_pipeline --placeholder` writes the old labeled placeholder files. `streamlit run app/dashboard.py` shows the Portfolio, Macro, and News tabs.
 
-### Competition rules
+### Objective
 
-These bind the allocation and the validator:
+> Objective: maximize expected FF3 alpha. Returns explained by market, size (SMB), or value (HML) exposure earn no credit. Momentum and low-volatility returns are not FF3 factors, so they can show up as alpha. Cash and SPY have roughly zero alpha and scale the portfolio's alpha down, so hold extra cash only with a stated, evidence-based reason.
 
-- 8 to 10 long-only stocks from the 33-stock universe in `config/settings.py`
-- At most 8% per stock and 25% per sector
-- At most 80% equity and at least 20% cash
-- Whole-percentage weights, with stocks plus CASH summing to exactly 100
-- Final output is a `Symbol,Weight` CSV block
+### Class rules (from the assignment)
 
-The class rule of 5 buy orders a month is tracked and reported only. Realized Fama-French alpha is not computed yet.
+A failure here is a grade risk:
+
+1. Hold at least 5 stocks at all times. ETFs do not count toward this minimum, as a conservative default until the professor confirms.
+2. Make at least 5 buy trades per calendar month (America/New_York). Rebalancing buys count.
+3. Equities and ETFs only. No crypto, options, or leveraged or inverse products.
+4. Trades happen in the class game.
+5. Trading must be guided by code, and every strategy change requires a submitted form.
+6. The grade is Fama-French 3-factor alpha, ranked against the class.
+
+### Strategy limits (our own choices)
+
+These are not class rules. `PORTFOLIO_LIMITS` in `config/settings.py` selects a profile:
+
+| Profile | Positions | Per stock | Per sector | Min cash | Max equity |
+|---|---:|---:|---:|---:|---:|
+| `alpha_v1` (default) | 5-10 | 12% | 35% | 5% | 95% |
+| `legacy` | 8-10 | 8% | 25% | 20% | 80% |
+
+Whole-percentage weights summing to 100 with CASH is a format rule for every profile. `ALLOW_ETF_HOLDINGS = False` is also our choice: an index ETF adds roughly zero alpha. The validator reports Format, Class rules, and Strategy limits as separate groups.
 
 ### Free API keys
 
@@ -64,7 +78,7 @@ With no keys, the run still completes: minimum cash, zero tilts, no sentiment, n
 
 ### How each signal works
 
-- **Regime (`src/macro.py`):** growth, inflation, financial conditions, and market trend each score -1, 0, or +1 by written rules. A sum of +2 or more is `risk_on` (20% cash), -2 or less is `risk_off` (35%), and anything else is `neutral` (25%). It needs FRED data.
+- **Regime (`src/macro.py`):** growth, inflation, financial conditions, and market trend each score -1, 0, or +1 by written rules. A sum of +2 or more is `risk_on` (20% cash on `legacy`, 5% on `alpha_v1`), -2 or less is `risk_off` (35% on `legacy`, 15% on `alpha_v1`), and anything else is `neutral` (25% on `legacy`, 5% on `alpha_v1`). It needs FRED data.
 - **Sector tilt:** the regime's defensive or cyclical table value plus sector ETF 3-month relative strength, clipped to +/-0.3.
 - **Sentiment (`src/news.py`):** recency-weighted VADER headline scores, shrunk toward 0 when a stock has few articles, and blended with Alpha Vantage if that endpoint is available. A stock with no news scores 0.
 - **Catalysts (`src/catalysts.py`):** earnings dates, 8-K items in plain English, and analyst trend changes produce flags with reasons. Only `negative_catalyst` is a hard veto by default.
@@ -78,12 +92,13 @@ Headlines reach the prompt inside delimiters with a random per-run token, and th
 
 - `USE_MACRO_REGIME`, `USE_NEWS_SENTIMENT`, `USE_CATALYST_FLAGS`: turn signals on or off
 - `W_SECTOR_TILT`, `W_SENTIMENT`: signal weights
+- `PORTFOLIO_LIMITS`, `PORTFOLIO_LIMIT_PROFILES`, `ALLOW_ETF_HOLDINGS`: strategy limits
 - `REGIME_THRESHOLDS`, `REGIME_CASH_TARGET_PCT`, `REGIME_SECTOR_TILT`: regime rules
 - `HARD_VETO_FLAGS`: which flags remove a stock
 - `NEWS_LOOKBACK_DAYS`, `EARNINGS_WINDOW_DAYS`, `SEC_LOOKBACK_DAYS`: lookback windows
 - `ALPHA_VANTAGE_TOP_N`, `MIN_INTERVAL_SECONDS`: call budgets and pacing
 
-With all three toggles off, the original price-only model runs.
+With `PORTFOLIO_LIMITS = "legacy"` and all three toggles off, the original price-only model runs.
 
 ### Known limitations
 

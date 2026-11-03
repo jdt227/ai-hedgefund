@@ -53,12 +53,12 @@ def test_missing_inputs_score_zero_with_a_note():
 
 @pytest.mark.parametrize("regime", [None, "risk_on", "neutral", "risk_off"])
 def test_cash_never_below_minimum(regime):
-    assert cash_target(regime) >= settings.MIN_CASH_PCT
+    assert cash_target(regime) >= settings.limits()['min_cash_pct']
 
 
 def test_cash_minimum_holds_even_if_config_is_lower(monkeypatch):
-    monkeypatch.setitem(settings.REGIME_CASH_TARGET_PCT, "risk_on", 5)
-    assert cash_target("risk_on") == settings.MIN_CASH_PCT
+    monkeypatch.setitem(settings.LEGACY_REGIME_CASH_TARGET_PCT, "risk_on", 5)
+    assert cash_target("risk_on") == settings.limits()['min_cash_pct']
 
 
 @pytest.mark.parametrize("regime", ["risk_on", "neutral", "risk_off"])

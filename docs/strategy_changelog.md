@@ -44,3 +44,15 @@ This entry covers `src.run_pipeline`. It also applies when all toggles are off, 
 - **What:** added AMD and MU (Technology) and MRK (Health Care).
 - **Why:** the account already holds them, after they ranked highly in the separate 79-stock baseline. With the 30-stock list, the validator rejected any allocation that kept them, and the model could not rank them.
 - **Evidence:** none for the change itself. This is an account-consistency change, not a tested improvement. It adds selection bias, because these names were picked after strong price runs. It also changes the z-score averages, so scores and picks can differ from the 30-stock list.
+
+## Weekly model: alpha_v1 strategy limits — 2026-11-03
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:**
+  - Separated class rules from our own strategy limits.
+  - New default profile `alpha_v1`: 5-10 positions, 12% per stock, 35% per sector, at least 5% cash, at most 95% equity. The previous limits remain available as `legacy`.
+  - Regime cash targets are now 5% (risk_on), 5% (neutral), and 15% (risk_off).
+  - ETFs are no longer allowed as strategy holdings, and banned products are rejected.
+- **Why:** the grade is FF3 alpha. The old 20% cash floor and 8% cap were our own limits, and cash scales alpha toward zero.
+- **Evidence:** none from this account. This follows from the grading metric, not a backtest. Higher concentration also raises the risk of a large drawdown.
