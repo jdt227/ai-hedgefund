@@ -105,6 +105,14 @@ def test_av_limit_note_stops_calls_and_is_not_cached(monkeypatch):
     assert scores == {} and len(calls) == 1 and removed == [1] and "limit" in status
 
 
+def test_av_premium_response_is_reported_clearly(monkeypatch):
+    monkeypatch.setattr("src.news.fetch", lambda *a, **k: FetchResult(
+        "ok", {"Information": "This is a premium endpoint."}, "r"))
+    monkeypatch.setattr("src.news.remove_cached", lambda *a, **k: None)
+    scores, status = fetch_alpha_vantage_scores(["AAA"], RUN, "key")
+    assert scores == {} and "premium endpoint" in status and status.startswith("unavailable")
+
+
 def test_av_respects_top_n_budget(monkeypatch):
     calls = []
     monkeypatch.setattr("src.news.fetch", lambda *a, **k: calls.append(k["params"]["tickers"]) or FetchResult(

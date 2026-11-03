@@ -54,11 +54,11 @@ Put them in `.env`, which is git-ignored. Any missing key only skips that source
 | Variable | Where to get it | Free-tier limit we found |
 |---|---|---|
 | `FRED_API_KEY` | fred.stlouisfed.org/docs/api/api_key.html | No published number; the terms prohibit unreasonable use. We send under 2 requests a second. |
-| `FINNHUB_API_KEY` | finnhub.io/register | **Unconfirmed:** secondary sources say 30 or 60 calls a minute, and endpoint access may vary by plan. We assume 30 a minute. A 403 skips that endpoint. |
-| `ALPHAVANTAGE_API_KEY` | alphavantage.co/support | 25 requests a day. Used for the top 15 ranked stocks only. |
+| `FINNHUB_API_KEY` | finnhub.io/register | 60 calls a minute, confirmed from its response headers. Company news, earnings calendar, and recommendation trends all worked on a free key. A 403 skips that endpoint. |
+| `ALPHAVANTAGE_API_KEY` | alphavantage.co/support | **Optional, currently no effect.** 25 requests a day, but `NEWS_SENTIMENT` returned "premium endpoint" on a free key (2026-11-03). The run reports it as unavailable and uses VADER only. |
 | `SEC_USER_AGENT` | No signup. Use a description and your contact email. | At most 10 requests a second. |
 
-The Federal Reserve press feed and yfinance need no key. A first run of the day makes about 60 Finnhub calls, so expect it to take a few minutes. Same-day re-runs read `data/cache/` and make no API calls.
+The Federal Reserve press feed and yfinance need no key. A first run of the day makes about 62 Finnhub calls and takes a minute or two. Same-day re-runs read `data/cache/` and make no API calls.
 
 With no keys, the run still completes: minimum cash, zero tilts, no sentiment, no vetoes. It is momentum only, and the report and prompt say which sources were skipped.
 
@@ -66,7 +66,7 @@ With no keys, the run still completes: minimum cash, zero tilts, no sentiment, n
 
 - **Regime (`src/macro.py`):** growth, inflation, financial conditions, and market trend each score -1, 0, or +1 by written rules. A sum of +2 or more is `risk_on` (20% cash), -2 or less is `risk_off` (35%), and anything else is `neutral` (25%). It needs FRED data.
 - **Sector tilt:** the regime's defensive or cyclical table value plus sector ETF 3-month relative strength, clipped to +/-0.3.
-- **Sentiment (`src/news.py`):** recency-weighted VADER headline scores, shrunk toward 0 when a stock has few articles, and blended with Alpha Vantage when available. A stock with no news scores 0.
+- **Sentiment (`src/news.py`):** recency-weighted VADER headline scores, shrunk toward 0 when a stock has few articles, and blended with Alpha Vantage if that endpoint is available. A stock with no news scores 0.
 - **Catalysts (`src/catalysts.py`):** earnings dates, 8-K items in plain English, and analyst trend changes produce flags with reasons. Only `negative_catalyst` is a hard veto by default.
 - **Final score:** `composite_score + W_SECTOR_TILT * sector_tilt + W_SENTIMENT * sentiment_z`, with `sentiment_z` clipped to +/-2.
 
@@ -89,7 +89,8 @@ With all three toggles off, the original price-only model runs.
 
 - **Too little news history to backtest.** The archive starts with your first run, so none of these signals has evidence of adding return yet.
 - **Sector tilt is very small by default.** At most +/-0.3 x 0.15 = +/-0.045 of score, which rarely changes a rank. The report shows each signal's contribution.
-- **Uneven sentiment.** Only the top 15 stocks get Alpha Vantage scores, so scores aren't perfectly comparable across the universe.
+- **Noisy sentiment.** VADER scores headline wording, not relevance. Finnhub's news for a ticker includes stories that barely mention the company, and popular stocks hit its cap of about 250 articles. If Alpha Vantage ever works, only the top 15 stocks get its scores.
+- **Unpublished macro months.** FRED has no October 2025 CPI, so CPI YoY has no value for October 2026 and the report will show the latest available month with its date.
 - **Macro values are the latest vintage.** FRED data can be revised, so past evidence is what we saw then, not always what was first published.
 - **Unfinished bars.** With toggles off, a mid-session run still includes today's incomplete price bar, as the original did. With any toggle on, only completed sessions are used.
 - **The benchmark can be picked with toggles off.** The original model ranks SPY alongside stocks and can select it, which the validator rejects. With any toggle on, only universe stocks are selected.

@@ -163,7 +163,10 @@ def fetch_alpha_vantage_scores(tickers: list[str], run_date: date, key: str | No
         # Limit errors arrive as HTTP 200 with a note, so they must not stay cached.
         if "feed" not in data:
             remove_cached("alphavantage", ALPHA_VANTAGE_URL, params, run_date)
-            return scores, f"stopped after {len(scores)} tickers: free-tier limit or API note"
+            note = str(data.get("Information") or data.get("Note") or data.get("Error Message") or "no feed returned")
+            if "premium" in note.lower():
+                return scores, "unavailable: NEWS_SENTIMENT is a premium endpoint for this key"
+            return scores, f"stopped after {len(scores)} tickers: {note[:120]}"
         score = _av_ticker_score(data["feed"], ticker)
         if score is not None:
             scores[ticker] = score

@@ -19,7 +19,7 @@ from config import settings
 from src.account.inputs import DEFAULT_ACCOUNT_DIR, load_account
 from src.account.reconcile import count_monthly_buys, reconcile
 from src.catalysts import CatalystResult
-from src.macro import MacroResult, render_macro_report
+from src.macro import MacroResult, render_macro_report, select_macro_headlines
 from src.news import NewsResult
 from src.reporting.audit_files import save_weight_prompt
 from src.untrusted import UntrustedBlocks, clean_text
@@ -95,17 +95,18 @@ CSV
 def macro_section(evidence: RunEvidence, blocks: UntrustedBlocks) -> str:
     macro = evidence.macro
     lines = [render_macro_report(macro), ""]
-    if macro.headlines:
+    selected = select_macro_headlines(macro.headlines, settings.PROMPT_MACRO_HEADLINES)
+    if selected:
         rows = [
             f"- {item['published_at'][:10]} | {clean_text(item['source'], 60)} | "
             f"{clean_text(item['headline'], settings.PROMPT_MAX_TEXT_CHARS)} | "
             f"{clean_text(item['url'], 200)} | retrieved {item['retrieved_at']}"
-            for item in macro.headlines[: settings.PROMPT_MACRO_HEADLINES]
+            for item in selected
         ]
-        lines += ["Recent macro and market headlines (context only, not scored):",
+        lines += ["Recent macro headlines, filtered by keyword (context only, not scored):",
                   blocks.wrap("macro headlines", rows)]
     else:
-        lines.append("Macro headlines unavailable for this run.")
+        lines.append("No relevant macro headlines were available for this run.")
     return "\n".join(lines)
 
 

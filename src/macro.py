@@ -12,6 +12,7 @@ tilts are zero, which leaves the price-only ranking unchanged.
 from __future__ import annotations
 
 import logging
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations"
 FED_RSS_URL = "https://www.federalreserve.gov/feeds/press_all.xml"
 FINNHUB_MARKET_NEWS_URL = "https://finnhub.io/api/v1/news"
+FED_SOURCE = "Federal Reserve press releases"
 
 
 @dataclass
@@ -87,8 +89,13 @@ def change_over(series: pd.Series, days: int) -> float | None:
 
 
 def cpi_yoy_series(index_levels: pd.Series) -> pd.Series:
-    """Year-over-year percent change of a monthly price index."""
-    return (index_levels.pct_change(12, fill_method=None) * 100).dropna()
+    """Year-over-year percent change of a monthly index, by calendar month.
+
+    Unpublished months (e.g. Oct 2025) must stay as gaps. Comparing by row count
+    would silently span 13 months and overstate inflation.
+    """
+    monthly = index_levels.asfreq("MS")
+    return (monthly.pct_change(12, fill_method=None) * 100).dropna()
 
 
 def build_indicator(name: str, series_id: str, series: pd.Series, retrieved_at: str | None,
@@ -287,10 +294,23 @@ def parse_fed_rss(xml_text: str, now_utc: datetime, retrieved_at: str | None) ->
             published = published.replace(tzinfo=timezone.utc)
         if published > now_utc:
             continue
-        items.append({"source": "Federal Reserve press releases", "headline": item.findtext("title") or "",
+        items.append({"source": FED_SOURCE, "headline": item.findtext("title") or "",
                       "url": item.findtext("link") or "", "published_at": published.isoformat(),
                       "retrieved_at": retrieved_at})
     return items
+
+
+def select_macro_headlines(items: list[dict], limit: int) -> list[dict]:
+    """Pick headlines that matter for macro: Fed releases first, then keyword matches.
+
+    General market news is mostly unrelated to macro, and taking the newest items
+    would push out a days-old FOMC statement.
+    """
+    pattern = re.compile(r"\b(" + "|".join(map(re.escape, settings.MACRO_HEADLINE_KEYWORDS)) + r")\b", re.I)
+    relevant = [i for i in items if pattern.search(i["headline"])]
+    fed = [i for i in relevant if i["source"] == FED_SOURCE][: settings.PROMPT_MAX_FED_HEADLINES]
+    others = [i for i in relevant if i["source"] != FED_SOURCE]
+    return (fed + others)[:limit]
 
 
 def fetch_macro_headlines(run_date: date, now_utc: datetime, finnhub_key: str | None) -> tuple[list[dict], dict]:

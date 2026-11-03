@@ -69,7 +69,7 @@ MIN_BUY_ORDERS_PER_MONTH = 5  # tracked and reported only; does not affect selec
 NEWS_LOOKBACK_DAYS = 7
 EARNINGS_WINDOW_DAYS = 7
 SEC_LOOKBACK_DAYS = 14
-MACRO_HISTORY_DAYS = 500
+MACRO_HISTORY_DAYS = 900  # CPI YoY needs 12 months before the 3-month trend
 MIN_ARTICLES_FOR_COVERAGE = 3
 
 # Sentiment: recency half-life, shrinkage toward 0 by n / (n + k), and the
@@ -86,12 +86,13 @@ ANALYST_TREND_CHANGE_THRESHOLD = 2
 HARD_VETO_FLAGS = ["negative_catalyst"]
 
 # Free-tier limits and our call budgets per run.
-# Finnhub: secondary sources disagree (30 vs 60 calls/min), so 30/min is assumed
-#   until confirmed with a real key. A 403 skips that endpoint.
-# Alpha Vantage: 25 requests/day (alphavantage.co/support).
+# Finnhub: 60 calls/min, confirmed from X-Ratelimit-Limit on a free key (2026-11-03).
+#   A 403 skips that endpoint.
+# Alpha Vantage: 25 requests/day (alphavantage.co/support), but NEWS_SENTIMENT
+#   answered "premium endpoint" on a free key on 2026-11-03, so expect it to skip.
 # SEC EDGAR: at most 10 requests/second (sec.gov/about/developer-resources).
 # FRED: no published number; terms prohibit unreasonable use, so stay well below 1/s.
-MIN_INTERVAL_SECONDS = {"finnhub": 2.1, "alphavantage": 1.5, "sec": 0.2, "fred": 0.6, "fed": 0.0}
+MIN_INTERVAL_SECONDS = {"finnhub": 1.1, "alphavantage": 1.5, "sec": 0.2, "fred": 0.6, "fed": 0.0}
 ALPHA_VANTAGE_TOP_N = 15
 ALPHA_VANTAGE_DAILY_BUDGET = 25
 
@@ -155,4 +156,11 @@ SECTOR_ETFS = {
 PROMPT_TOP_CANDIDATES = 15
 PROMPT_HEADLINES_PER_FIRM = 5
 PROMPT_MACRO_HEADLINES = 8
+PROMPT_MAX_FED_HEADLINES = 3
+MACRO_HEADLINE_KEYWORDS = [
+    "Fed", "FOMC", "Federal Reserve", "Powell", "monetary", "interest rate", "interest rates", "rate cut",
+    "rate cuts", "rate hike", "inflation", "CPI", "PCE", "jobs", "payrolls", "jobless", "unemployment",
+    "recession", "GDP", "Treasury", "Treasuries", "yields", "bond", "bonds", "dollar", "tariff", "tariffs",
+    "oil", "shutdown", "midterm", "midterms", "economy", "economic",
+]
 PROMPT_MAX_TEXT_CHARS = 300

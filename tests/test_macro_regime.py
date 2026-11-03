@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from config import settings
-from src.macro import (Indicator, cash_target, classify_regime, cpi_yoy_series, market_proxies,
-                       parse_fed_rss, parse_fred_observations, sector_tilts)
+from src.macro import (FED_SOURCE, Indicator, cash_target, classify_regime, cpi_yoy_series, market_proxies,
+                       parse_fed_rss, parse_fred_observations, sector_tilts, select_macro_headlines)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime(2030, 1, 15, 21, 0, tzinfo=timezone.utc)
@@ -107,3 +107,30 @@ def test_market_proxies_spy_gap_and_etf_returns():
     gap, day, returns = market_proxies(prices)
     assert gap > 0 and day == str(idx[-1].date())
     assert returns["Technology"] > 0 and "Energy" not in returns
+
+
+def test_cpi_yoy_compares_calendar_months_across_a_gap():
+    """A missing month must not make the comparison span 13 months."""
+    idx = pd.date_range("2024-01-01", periods=25, freq="MS")
+    levels = pd.Series(np.linspace(100, 124, 25), index=idx).drop(pd.Timestamp("2024-11-01"))
+    yoy = cpi_yoy_series(levels)
+    jan_2026 = levels[pd.Timestamp("2026-01-01")] / levels[pd.Timestamp("2025-01-01")] - 1
+    assert yoy[pd.Timestamp("2026-01-01")] == pytest.approx(jan_2026 * 100)
+    assert pd.Timestamp("2025-11-01") not in yoy.index
+
+
+def headline(source, text, day="2030-01-14"):
+    return {"source": source, "headline": text, "published_at": day, "url": "", "retrieved_at": "r"}
+
+
+def test_macro_headlines_keep_fed_and_drop_noise():
+    fed = headline(FED_SOURCE, "Federal Reserve issues FOMC statement", "2030-01-08")
+    items = [headline("CNBC", "Team owner says no rush on backup QB"),
+             headline("CNBC", "Oil edges up as dollar drifts"),
+             headline(FED_SOURCE, "Board announces approval of bank application"),
+             fed]
+    assert select_macro_headlines(items, 8) == [fed, items[1]]
+
+
+def test_keyword_match_uses_whole_words():
+    assert select_macro_headlines([headline("CNBC", "Fedora sales boil over")], 8) == []
