@@ -81,3 +81,11 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
   - The LLM response must include a Holdings actions block, which the validator checks.
 - **Why:** the portfolio should evolve by rule instead of ignoring what is held. The gap between the buy and sell lines limits churn on a noisy signal. The sell line was set to 75 instead of 40 because rank 40 would have sold five of eight stocks in one week.
 - **Evidence:** none from this account. The thresholds are judgment calls, and turnover is not yet measured.
+
+## Weekly model: trade list and buy compliance — 2026-11-03
+
+This entry covers `src.trade_list`. **File a strategy-change form for this entry.**
+
+- **What:** validated allocations now become an ordered trade list. It keeps at least 5 stocks at every step, tracks the month's buy orders against 5, and proposes the smallest "compliance buys" when the month would fall short. It never breaks a limit to reach the count. Trades are still placed by hand.
+- **Why:** to meet the class rules at every step of a rebalance, not just at the end.
+- **Evidence:** none needed for rule compliance. Compliance buys may add small trades with no expected alpha.
