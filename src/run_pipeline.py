@@ -1,4 +1,15 @@
-from datetime import date
+"""Weekly pipeline: prices, optional macro and news overlays, portfolio, weight prompt.
+
+Each overlay is toggled in config/settings.py and skips itself when its data or
+API key is missing. With all toggles off, the picks match the price-only model.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import date, datetime, timezone
+import logging
+import os
 from pathlib import Path
 import sys
 
@@ -6,30 +17,125 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from config import settings
+from src.build_weight_prompt import RunEvidence, build_weight_prompt
+from src.catalysts import run_catalysts, vetoes
+from src.create_submission_placeholders import create_submission_files
 from src.data import download_price_data
-from src.features import add_standardized_scores, calculate_features
-from src.portfolio import build_portfolio, summarize_sector_weights
+from src.features import add_final_score, add_standardized_scores, calculate_features
+from src.macro import MacroResult, run_macro
+from src.market_data.provider import expected_last_completed_session
+from src.news import run_news
+from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
+from src.reporting.audit_files import create_run_directory
+from src.reporting.weekly_sections import overlay_sections
 
 
 PROCESSED_DATA_DIR = Path("data/processed")
 REPORTS_DIR = Path("reports")
+RUNS_DIR = Path("runs")
+
+logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+def _guarded(name: str, status: dict[str, str], func, default=None):
+    """Run one optional module. A failure skips it and is reported, never raised."""
+    try:
+        return func()
+    except Exception as exc:  # any module failure must leave the price-only run intact
+        logger.warning("%s failed: %s", name, exc)
+        status[name] = f"unavailable: {type(exc).__name__}"
+        return default
+
+
+def overlays_enabled() -> bool:
+    return settings.USE_MACRO_REGIME or settings.USE_NEWS_SENTIMENT or settings.USE_CATALYST_FLAGS
+
+
+def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime) -> RunEvidence:
+    """Compute scores, overlays, and the portfolio from prices and environment keys."""
+    status: dict[str, str] = {"yfinance_prices": f"ok through {prices.index[-1].date()}"}
+    scored = add_standardized_scores(calculate_features(prices))
+    universe = [t for t in settings.UNIVERSE if t in scored.index]
+
+    fred_key = os.getenv("FRED_API_KEY") or None
+    finnhub_key = os.getenv("FINNHUB_API_KEY") or None
+    av_key = os.getenv("ALPHAVANTAGE_API_KEY") or None
+    sec_agent = os.getenv("SEC_USER_AGENT") or None
+
+    no_macro = MacroResult("skipped", "Macro module failed; see data-source status.")
+    macro = (_guarded("macro", status, lambda: run_macro(run_date, now_utc, fred_key, finnhub_key), no_macro)
+             if settings.USE_MACRO_REGIME else MacroResult("disabled", "USE_MACRO_REGIME is False"))
+    status["macro"] = status.get("macro", macro.status)
+    status.update(macro.source_status)
+
+    news = None
+    if settings.USE_NEWS_SENTIMENT:
+        by_rank = [t for t in scored.index if t in settings.UNIVERSE]
+        news = _guarded("news", status, lambda: run_news(universe, by_rank, run_date, now_utc, finnhub_key, av_key))
+        if news is not None:
+            status.update(news.source_status)
+    else:
+        status["news"] = "disabled"
+
+    catalysts = None
+    if settings.USE_CATALYST_FLAGS:
+        sentiment = news.sentiment if news is not None else None
+        catalysts = _guarded("catalysts", status,
+                             lambda: run_catalysts(universe, sentiment, run_date, finnhub_key, sec_agent))
+        if catalysts is not None:
+            status.update(catalysts.source_status)
+    else:
+        status["catalysts"] = "disabled"
+
+    final = add_final_score(scored, settings.UNIVERSE, macro.sector_tilts,
+                            news.sentiment["sentiment_z"] if news is not None else None)
+    vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
+
+    if overlays_enabled():
+        portfolio, rejected, failures = build_competition_portfolio(final, macro.cash_target_pct, vetoed)
+    else:
+        portfolio = build_portfolio(scored)
+        portfolio["weight_pct"] = (portfolio["target_weight"] * 100).round().astype(int)
+        rejected = pd.DataFrame(columns=["ticker", "sector", "rank", "final_score", "reason"])
+        failures = []
+    return RunEvidence(run_date, now_utc, prices, final, portfolio, rejected, failures, vetoed, macro,
+                       news, catalysts, status)
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Run the weekly pipeline.")
+    parser.add_argument("--placeholder", action="store_true",
+                        help="Only write the clearly labeled placeholder submission files.")
+    args = parser.parse_args(argv)
+    if args.placeholder:
+        for path in create_submission_files():
+            print(f"Created {path}")
+        return
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     run_date = date.today().isoformat()
+    now_utc = datetime.now(timezone.utc)
 
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print("1/4 Downloading daily prices...")
     prices = download_price_data(start="2020-01-01")
+    if overlays_enabled():
+        # Use completed sessions only, so nothing from an unfinished day enters the signals.
+        last = expected_last_completed_session(now_utc)
+        prices = prices.loc[prices.index.date <= last]
 
-    print("2/4 Calculating momentum and risk features...")
-    features = calculate_features(prices)
-    scored_features = add_standardized_scores(features)
+    print("2/4 Calculating signals and fetching macro and news (first run of the day can take minutes)...")
+    evidence = build_run(prices, date.today(), now_utc)
+    scored_features = evidence.final_scores
 
     print("3/4 Building constrained portfolio...")
-    portfolio = build_portfolio(scored_features)
+    portfolio = evidence.portfolio
     sector_weights = summarize_sector_weights(portfolio)
 
     print("4/4 Saving outputs...")
@@ -53,9 +159,10 @@ def main() -> None:
         f"# AI Hedge Fund — Rules-Based Portfolio Report",
         "",
         f"**Run date:** {run_date}",
+        f"**Regime:** {evidence.macro.regime or 'none (' + evidence.macro.status + ')'}",
         f"**Stocks selected:** {len(portfolio)}",
-        f"**Capital invested:** ${total_invested:,.2f}",
-        f"**Cash remaining:** ${cash_remaining:,.2f}",
+        f"**Hypothetical capital invested (of ${settings.STARTING_CAPITAL:,}):** ${total_invested:,.2f}",
+        f"**Hypothetical cash remaining:** ${cash_remaining:,.2f}",
         "",
         "## Proposed Holdings",
         "",
@@ -82,17 +189,33 @@ def main() -> None:
             "Stocks are ranked by a composite of long-term momentum, "
             "short-term momentum, and trailing annualized volatility. "
             "The portfolio applies an 8% maximum position weight, a 25% "
-            "sector limit, and a maximum of 10 positions."
+            "sector limit, and a maximum of 10 positions. Share counts use a "
+            "hypothetical capital figure, not your account."
         ),
+        "",
+        *overlay_sections(evidence),
         "",
         "Educational paper-trading research only; not investment advice.",
     ]
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
 
+    run_dir = create_run_directory(RUNS_DIR)
+    prompt_path = build_weight_prompt(evidence, run_dir)
+
     print("\nPortfolio created successfully.")
-    print(portfolio[["ticker", "sector", "composite_score", "actual_weight"]])
+    print(portfolio[["ticker", "sector", "composite_score", "weight_pct"]])
+    print(f"Regime: {evidence.macro.regime or 'none (' + evidence.macro.status + ')'}; "
+          f"cash {100 - int(portfolio['weight_pct'].sum())}%")
+    for failure in evidence.rule_failures:
+        print(f"RULE FAILURE: {failure}")
+    print("\nData sources:")
+    for name, state in evidence.source_status.items():
+        print(f"  {name}: {state}")
     print(f"\nSaved report: {report_path}")
+    print(f"Weight prompt: {prompt_path}")
+    print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
+    print(f"  python -m src.validate_allocation {run_dir / 'recommendation_reason.txt'}")
 
 
 if __name__ == "__main__":

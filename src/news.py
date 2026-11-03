@@ -34,6 +34,7 @@ class NewsResult:
     source_status: dict[str, str] = field(default_factory=dict)
 
 
+FALLBACK_FAILURE_LIMIT = 3
 ARTICLE_COLUMNS = ["ticker", "published_at", "source", "headline", "summary", "url", "retrieved_at"]
 
 
@@ -110,20 +111,24 @@ def collect_articles(tickers: list[str], run_date: date, now_utc: datetime,
     finnhub_failures: dict[str, str] = {}
     fallback_used: list[str] = []
     fallback_failed: list[str] = []
+    consecutive_failures = 0
     for ticker in tickers:
         found: list[dict] = []
         if finnhub_key:
             found, status = _finnhub_articles(ticker, finnhub_key, run_date)
             if status != "ok":
                 finnhub_failures[ticker] = status
-        if not found:
+        # Stop after a few straight failures: the unofficial feed is likely down.
+        if not found and consecutive_failures < FALLBACK_FAILURE_LIMIT:
             try:
                 found = _yfinance_articles(ticker, now_utc)
+                consecutive_failures = 0
                 if found:
                     fallback_used.append(ticker)
             except Exception as exc:  # the unofficial feed raises many error types
                 logger.warning("yfinance news failed for %s: %s", ticker, exc)
                 fallback_failed.append(ticker)
+                consecutive_failures += 1
         rows += found
 
     articles = pd.DataFrame(rows, columns=ARTICLE_COLUMNS)
@@ -134,7 +139,8 @@ def collect_articles(tickers: list[str], run_date: date, now_utc: datetime,
             f"failed for {len(finnhub_failures)}/{len(tickers)} tickers "
             f"({', '.join(sorted(set(finnhub_failures.values())))})" if finnhub_failures else "ok")
     status["yfinance_news_fallback"] = (f"used for {len(fallback_used)} tickers; "
-                                        f"failed for {len(fallback_failed)}")
+                                        f"failed for {len(fallback_failed)}"
+                                        + ("; stopped early" if consecutive_failures >= FALLBACK_FAILURE_LIMIT else ""))
     return articles, status
 
 
