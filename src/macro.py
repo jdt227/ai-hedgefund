@@ -268,7 +268,7 @@ def sector_tilts(regime: str, etf_returns: dict[str, float]) -> dict[str, float]
         if sector in ranks.index and len(ranks) > 1:
             strength = (2 * (ranks[sector] - 1) / spread - 1) * settings.SECTOR_RS_TILT_RANGE
         limit = settings.SECTOR_TILT_LIMIT
-        tilts[sector] = round(max(-limit, min(limit, base + strength)), 4)
+        tilts[sector] = round(float(max(-limit, min(limit, base + strength))), 4)
     return tilts
 
 

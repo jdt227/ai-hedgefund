@@ -99,7 +99,8 @@ def fetch(provider: str, url: str, *, params: dict | None = None, headers: dict 
         if code >= 400:
             return FetchResult("error", message=f"HTTP {code}")
         try:
-            data = response.text if as_text else response.json()
+            # Decode bytes directly: requests guesses Latin-1 for text/xml, which mangles a UTF-8 BOM.
+            data = response.content.decode("utf-8-sig", errors="replace") if as_text else response.json()
         except ValueError:
             return FetchResult("error", message="Response was not valid JSON")
         retrieved_at = datetime.now(timezone.utc).isoformat()
