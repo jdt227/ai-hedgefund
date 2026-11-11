@@ -17,7 +17,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-## Weekly pipeline (news + macro)
+## Weekly pipeline
+
+### Two ways to run it
+
+- **Manual (no agents):** `python -m src.run_pipeline`, paste the prompt into Claude, validate, build the trade list. Described below.
+- **Agent committee:** type `/weekly-picks` in Claude Code. It runs the pipeline with `--agents`, seven subagents, the assembler, the PM, the validator (with up to 2 retries), and the trade list. See [docs/AGENTS.md](docs/AGENTS.md) for each role's authority. Start a new Claude Code session after adding or editing agent files.
 
 ### Weekly workflow
 
@@ -66,6 +71,33 @@ These are not class rules. `PORTFOLIO_LIMITS` in `config/settings.py` selects a 
 | `legacy` | 8-10 | 8% | 25% | 20% | 80% |
 
 Whole-percentage weights summing to 100 with CASH is a format rule for every profile. `ALLOW_ETF_HOLDINGS = False` is also our choice: an index ETF adds roughly zero alpha. The validator reports Format, Class rules, and Strategy limits as separate groups.
+
+### Contest metric and account values
+
+The grade is Fama-French 3-factor alpha, so each run estimates it from your own account:
+
+```bash
+python -m src.cli log-value 2026-11-11 100000.00
+```
+
+Log the account value from the class game once a week, into `private/account/account_values.csv` (git-ignored; template in `templates/account/`). The command rejects duplicate dates, future dates, and non-positive values.
+
+- **Daily series:** when `snapshot_captured_at`, cash, `holdings_complete`, and `ledger_complete_after_snapshot` are all set, daily account values are rebuilt from the snapshot, your fills, and daily closes. Logged values cross-check them, and gaps over 1% are reported (often dividends or missing fills).
+- **Weekly fallback:** otherwise, returns between logged values are used. The Ken French weekly file is used when logs fall on its Friday weeks; otherwise daily factors are compounded over each interval.
+- **Results:** official alpha (Ken French factors, which lag by weeks) and a clearly labeled ETF proxy estimate (SPY; IWM−IWB; IWD−IWF; RF from French, then FRED DTB3). The proxy is not the graded number. Fewer than 60 daily or 8 logged returns gives "insufficient history"; fewer than 126 daily or 26 logged returns is labeled "low confidence".
+- **Ex-ante loadings** of the proposed portfolio appear in the report and prompt. Loadings earn no alpha, and no ex-ante alpha is shown, because the stocks were picked for their past returns.
+
+The dashboard's Contest metric tab charts the account value series.
+
+### Strategy-change forms
+
+Every strategy change needs a class form. Each run stores a fingerprint of all settings, the universe snapshot, and every `.claude/agents/*.md` file, and prints "Strategy changed since last form: file one" when anything differs from the last form.
+
+```bash
+python -m src.strategy_form
+```
+
+This prints a draft and writes `docs/forms/<date>_<version>.md`: new changelog entries (what, why, evidence), the config and agent diff, and the effective date. Edit it, submit the class form, then commit the file. The first form covers every changelog entry, so trim entries you already filed by hand.
 
 ### Universe and funnel
 
@@ -140,6 +172,8 @@ With `PORTFOLIO_LIMITS = "legacy"` and all three toggles off, the original price
 ### Known limitations
 
 - **Survivorship bias.** The S&P 500 snapshot is today's list, so a historical test on it would look better than reality. On `legacy33`, AMD, MU, and MRK also joined because they were already held, after strong runs.
+- **Realized alpha from a few weeks of data is very noisy**, and Ken French factors lag by weeks.
+- **LLM judgment is untested.** The agent committee adds perspective, not evidence; persona agents are reasoning metaphors.
 - **Too little news history to backtest.** The archive starts with your first run, so none of these signals has evidence of adding return yet.
 - **Sector tilt is very small by default.** At most +/-0.3 x 0.15 = +/-0.045 of score, which rarely changes a rank. The report shows each signal's contribution.
 - **Noisy sentiment.** VADER scores headline wording, not relevance. Finnhub's news for a ticker includes stories that barely mention the company, and popular stocks hit its cap of about 250 articles. If Alpha Vantage ever works, only the top 15 stocks get its scores.
@@ -217,11 +251,9 @@ RUN_LIVE=1 pytest -m live   # network smoke tests (yfinance, Ken French)
 - Realized Fama–French alpha needs a time series of official account values.
   It is not computed yet, and it can't be computed from one screenshot.
 
-### Extension points (not built yet)
+### Extension points
 
-`src/strategy/overlays.py` defines the interface future research overlays
-must use, such as a politician-disclosure watcher, a scout-style rubric, or
-an experiment planner. These overlays:
+`src/strategy/overlays.py` defines the interface for research overlays. The scout and House-disclosure overlays use it; an experiment planner is not built yet. Overlays:
 
 - Timestamp evidence by when it became **public**.
 - Add only a bounded weight to the composite score.

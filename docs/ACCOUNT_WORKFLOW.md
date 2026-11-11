@@ -8,7 +8,8 @@ trades yourself.
 private/account/              (git-ignored; create it with: python -m src.cli init-account)
 ├── account_metadata.json     game name, snapshot time/zone, cash, coverage flags
 ├── holdings.csv              opening holdings snapshot
-└── trades.csv                every actual fill after (or before) the snapshot
+├── trades.csv                every actual fill after (or before) the snapshot
+└── account_values.csv        weekly account values for alpha tracking (python -m src.cli log-value)
 ```
 
 Blank templates and **fictitious** examples are in `templates/account/`.
