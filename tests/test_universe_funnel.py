@@ -183,7 +183,7 @@ def test_holding_outside_universe_is_always_analyzed(small_sp500, make_account):
 
 
 def test_legacy_invariant_matches_original_model(monkeypatch, tmp_path):
-    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS", "USE_SCOUT_OVERLAY"):
+    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS", "USE_SCOUT_OVERLAY", "USE_POLITICIAN_OVERLAY"):
         monkeypatch.setattr(settings, name, False)
     assert run_pipeline.uses_original_model()
     prices = universe_prices()

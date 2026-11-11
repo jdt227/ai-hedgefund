@@ -10,6 +10,7 @@ day reads the cache and makes no request. Failures are not cached.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -71,14 +72,15 @@ def _scrub(text: str, params: dict | None) -> str:
 
 def fetch(provider: str, url: str, *, params: dict | None = None, headers: dict | None = None,
           run_date: date | None = None, min_interval: float = 0.0, timeout: float = 20.0,
-          retries: int = 2, backoff: float = 2.0, as_text: bool = False,
+          retries: int = 2, backoff: float = 2.0, as_text: bool = False, as_bytes: bool = False,
           cache_root: Path | None = None) -> FetchResult:
-    """GET a URL through the cache. Returns JSON, or text when ``as_text`` is set."""
+    """GET a URL through the cache. Returns JSON, text with ``as_text``, or bytes with ``as_bytes``."""
     run_date = run_date or date.today()
     path = cache_path(provider, url, params, run_date, cache_root)
     if path.exists():
         cached = json.loads(path.read_text(encoding="utf-8"))
-        return FetchResult("cached", cached["data"], cached["retrieved_at"])
+        data = base64.b64decode(cached["data"]) if cached.get("encoding") == "base64" else cached["data"]
+        return FetchResult("cached", data, cached["retrieved_at"])
 
     message = ""
     for attempt in range(retries + 1):
@@ -103,12 +105,18 @@ def fetch(provider: str, url: str, *, params: dict | None = None, headers: dict 
             return FetchResult("error", message=f"HTTP {code}")
         try:
             # Decode bytes directly: requests guesses Latin-1 for text/xml, which mangles a UTF-8 BOM.
-            data = response.content.decode("utf-8-sig", errors="replace") if as_text else response.json()
+            if as_bytes:
+                data = response.content
+            else:
+                data = response.content.decode("utf-8-sig", errors="replace") if as_text else response.json()
         except ValueError:
             return FetchResult("error", message="Response was not valid JSON")
         retrieved_at = datetime.now(timezone.utc).isoformat()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"retrieved_at": retrieved_at, "data": data}), encoding="utf-8")
+        stored = {"retrieved_at": retrieved_at, "data": data}
+        if as_bytes:
+            stored = {"retrieved_at": retrieved_at, "encoding": "base64", "data": base64.b64encode(data).decode()}
+        path.write_text(json.dumps(stored), encoding="utf-8")
         return FetchResult("ok", data, retrieved_at)
 
     status = "rate_limited" if message == "HTTP 429" else "error"

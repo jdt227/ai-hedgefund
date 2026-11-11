@@ -55,6 +55,9 @@ USE_MACRO_REGIME = True
 USE_NEWS_SENTIMENT = True
 USE_CATALYST_FLAGS = True
 USE_SCOUT_OVERLAY = True
+USE_POLITICIAN_OVERLAY = True
+W_POLITICIAN = 0.05          # House disclosures only; value in [-1, 1]
+POLITICIAN_LOOKBACK_DAYS = 90
 W_SCOUT = 0.05               # scout value is in [-1, 1], so at most +/-0.05 of score
 
 # final_score = composite_score + W_SECTOR_TILT * sector_tilt + W_SENTIMENT * sentiment_z
@@ -156,7 +159,7 @@ HARD_VETO_FLAGS = ["negative_catalyst"]
 #   answered "premium endpoint" on a free key on 2026-11-03, so expect it to skip.
 # SEC EDGAR: at most 10 requests/second (sec.gov/about/developer-resources).
 # FRED: no published number; terms prohibit unreasonable use, so stay well below 1/s.
-MIN_INTERVAL_SECONDS = {"finnhub": 1.1, "alphavantage": 1.5, "sec": 0.2, "fred": 0.6, "fed": 0.0}
+MIN_INTERVAL_SECONDS = {"house": 0.5, "finnhub": 1.1, "alphavantage": 1.5, "sec": 0.2, "fred": 0.6, "fed": 0.0}
 ALPHA_VANTAGE_TOP_N = 15
 ALPHA_VANTAGE_DAILY_BUDGET = 25
 

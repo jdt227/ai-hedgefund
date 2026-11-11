@@ -32,7 +32,9 @@ from src.market_data.provider import expected_last_completed_session
 from src.evaluation.contest_run import compute_contest
 from src.holdings_review import HoldingsInputs, incumbents_from_review, review_holdings
 from src.news import run_news
+from src.overlays.politician import PoliticianOverlay
 from src.overlays.scout import ScoutOverlay
+from src.politicians import fetch_house_trades
 from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
 from src.reporting.audit_files import create_run_directory
 from src.reporting.weekly_sections import overlay_sections
@@ -62,7 +64,7 @@ def _guarded(name: str, status: dict[str, str], func, default=None):
 
 def overlays_enabled() -> bool:
     return (settings.USE_MACRO_REGIME or settings.USE_NEWS_SENTIMENT or settings.USE_CATALYST_FLAGS
-            or settings.USE_SCOUT_OVERLAY)
+            or settings.USE_SCOUT_OVERLAY or settings.USE_POLITICIAN_OVERLAY)
 
 
 def uses_original_model() -> bool:
@@ -157,6 +159,17 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd
     overlays = {}
     if scout is not None and len(scout):
         overlays["scout"] = (scout.set_index("ticker")["value"], settings.W_SCOUT)
+    politics = pd.DataFrame()
+    if settings.USE_POLITICIAN_OVERLAY:
+        house = _guarded("politician", status, lambda: fetch_house_trades(run_date, settings.POLITICIAN_LOOKBACK_DAYS))
+        if house is not None:
+            status.update(house.status)
+            politics = PoliticianOverlay(house.trades, settings.W_POLITICIAN).compute(
+                list(dict.fromkeys(list(universe) + held)), run_date)
+            if len(politics):
+                overlays["politician"] = (politics.set_index("ticker")["value"], settings.W_POLITICIAN)
+    else:
+        status["politician"] = "disabled"
     final = add_final_score(scored, universe, macro.sector_tilts,
                             news.sentiment["sentiment_z"] if news is not None else None, overlays=overlays)
     vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
@@ -175,7 +188,7 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd
     return RunEvidence(run_date, now_utc, prices, final, portfolio, rejected, failures, vetoed, macro,
                        news, catalysts, status, universe, excluded, quality, deep, review, basis, account_dir,
                        reference_prices(close if close is not None else prices), {},
-                       scout if scout is not None else pd.DataFrame())
+                       scout if scout is not None else pd.DataFrame(), politics)
 
 
 def reference_prices(frame: pd.DataFrame) -> pd.DataFrame:

@@ -105,3 +105,11 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
 - **What:** added a scout overlay with A-F grades for clutch (downside capture vs SPY), durability (drawdown and recovery), team fit (correlation with other top candidates), injury report, and scoring. Only clutch, durability, and team fit move the score, by at most +/-0.05 (`W_SCOUT`). Toggle with `USE_SCOUT_OVERLAY`.
 - **Why:** to reward stocks that hold up in market selloffs and diversify the portfolio, without counting momentum twice.
 - **Evidence:** none. Basketball scouting is a reasoning metaphor, and the weight is kept small for that reason.
+
+## Weekly model: House disclosure overlay — 2026-11-11
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:** added a politician overlay from House periodic transaction reports (free House Clerk files). For each stock: (members disclosing buys − members disclosing sells) / (buyers + sellers + 2), clipped to ±1, times `W_POLITICIAN` = 0.05. Uses filing dates (when trades became public) over 90 days, stock trades only, no person or party weighting. Senate filings are not used. Toggle with `USE_POLITICIAN_OVERLAY`.
+- **Why:** a small, transparent signal from public disclosures, kept separate so its effect can be measured by turning it off.
+- **Evidence:** none. Disclosures lag trades by up to 45 days, amounts are ranges, and congressional trades have no established record of beating the market. Parsing found 97.9% of stock lines in a live sample; scanned filings (about 15%) are skipped.

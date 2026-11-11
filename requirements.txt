@@ -8,3 +8,4 @@ pytest
 requests
 python-dotenv
 vaderSentiment
+pypdf

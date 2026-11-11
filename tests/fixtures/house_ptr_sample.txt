@@ -1,0 +1,22 @@
+P        T           R
+Clerk of the House of Representatives • Legislative Resource Center • B81 Cannon Building • Washington, DC 20515
+Name: Hon. Example Member
+Status: Member
+State/District: ZZ01
+ID Owner Asset Transaction
+Type
+Date Notification
+Date
+Amount Cap.
+Gains >
+$200?
+SP Fictional Widgets, Inc. - Common
+Stock (XMPA) [ST]
+P 12/01/2029 12/05/2029 $1,001 - $15,000
+JT Fictional Holdings Class B (XMP/B) [ST] S (partial) 12/02/2029 12/05/2029 $15,001 -
+$50,000
+Fictional Widgets Call Option (XMPA) [OP] P 12/03/2029 12/05/2029 $1,001 - $15,000
+US Treasury Bill [GS] P 12/03/2029 12/05/2029 $15,001 - $50,000
+Fictional Swap Corp (XMPC) [ST] E 12/03/2029 12/05/2029 $1,001 - $15,000
+Fictional Mega Corp (XMPD) [ST] P 12/04/2029 12/05/2029 Over $50,000,000
+Digitally Signed: Hon. Example Member , 12/20/2029

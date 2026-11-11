@@ -53,6 +53,7 @@ class RunEvidence:
     reference_prices: pd.DataFrame = field(default_factory=pd.DataFrame)  # ticker, reference_price, reference_date
     contest: dict = field(default_factory=dict)                         # realized alpha and ex-ante loadings
     scout: pd.DataFrame = field(default_factory=pd.DataFrame)           # scout grades per ticker
+    politics: pd.DataFrame = field(default_factory=pd.DataFrame)        # House disclosure summary per ticker
 
 
 def build_instructions(run_date: date, blocks: UntrustedBlocks) -> str:
@@ -174,6 +175,12 @@ def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: Untru
     ]
     if len(evidence.scout) and ticker in set(evidence.scout["ticker"]):
         lines.append("Scout report: " + evidence.scout.set_index("ticker").at[ticker, "evidence"])
+    if len(evidence.politics) and ticker in set(evidence.politics["ticker"]):
+        lines.append("Congress (House only; public filing dates; up to 45-day lag; amounts are ranges): "
+                     + evidence.politics.set_index("ticker").at[ticker, "evidence"])
+    elif evidence.source_status.get("house_ptr", "").startswith("ok"):
+        lines.append(f"Congress (House only): no disclosed stock trades in the last "
+                     f"{settings.POLITICIAN_LOOKBACK_DAYS} days.")
     catalysts = evidence.catalysts
     news = evidence.news
     outside = bool(evidence.deep_tickers) and ticker not in evidence.deep_tickers
@@ -398,6 +405,8 @@ def write_evidence(evidence: RunEvidence, run_dir: Path) -> Path:
     evidence.final_scores.to_csv(out / "final_scores.csv")
     if len(evidence.scout):
         evidence.scout.to_csv(out / "scout.csv", index=False)
+    if len(evidence.politics):
+        evidence.politics.to_csv(out / "politician.csv", index=False)
     if evidence.news is not None:
         evidence.news.articles.to_csv(out / "news_articles.csv", index=False)
         evidence.news.sentiment.to_csv(out / "sentiment.csv")

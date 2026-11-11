@@ -120,6 +120,7 @@ def test_toggles_off_uses_old_path_and_touches_no_module(monkeypatch):
     monkeypatch.setattr(settings, "USE_NEWS_SENTIMENT", False)
     monkeypatch.setattr(settings, "USE_CATALYST_FLAGS", False)
     monkeypatch.setattr(settings, "USE_SCOUT_OVERLAY", False)
+    monkeypatch.setattr(settings, "USE_POLITICIAN_OVERLAY", False)
 
     def boom(*a, **k):
         raise AssertionError("module must not run with its toggle off")
@@ -302,7 +303,7 @@ def test_main_with_no_keys_writes_report_and_prompt(main_env, capsys):
 
 
 def test_main_with_toggles_off(main_env, monkeypatch):
-    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS", "USE_SCOUT_OVERLAY"):
+    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS", "USE_SCOUT_OVERLAY", "USE_POLITICIAN_OVERLAY"):
         monkeypatch.setattr(settings, name, False)
     run_pipeline.main([])
     text = (latest_run(main_env) / "weight_prompt.txt").read_text()

@@ -91,6 +91,13 @@ New buys need rank `BUY_RANK_CUTOFF` (15) or better, and changes under `MIN_TRAD
 
 The trade list orders SELLs, TRIMs, then BUYs/ADDs, and moves buys ahead of sales if a sale would leave fewer than 5 stocks. If the month would fall short of 5 buy orders, it proposes the smallest "compliance buys" in the highest-ranked HOLD positions with room under every limit. It never breaks a limit to reach the count. Share quantities need official cash, game name, and completeness; otherwise it shows weight changes only and names the missing fields.
 
+### Overlays
+
+Each overlay is bounded, shown in the score breakdown, and can be turned off in `config/settings.py`:
+
+- **Scout** (`USE_SCOUT_OVERLAY`, at most ±0.05): A-F grades for clutch (downside capture vs SPY), durability, team fit, injury report, and scoring. Only clutch, durability, and team fit move the score, so momentum is not counted twice. Basketball scouting is a reasoning metaphor, not a proven source of returns.
+- **Politician** (`USE_POLITICIAN_OVERLAY`, at most ±0.05): House periodic transaction reports from the free House Clerk files, by filing date over 90 days. Senate filings are not used. Electronic filings are read with `pypdf`, and scanned ones are skipped. A live check parsed 97.9% of stock lines. The first run downloads about 100 PDFs (under a minute); filings are cached for good.
+
 ### Free API keys
 
 Put them in `.env`, which is git-ignored. Any missing key only skips that source.
@@ -141,6 +148,7 @@ With `PORTFOLIO_LIMITS = "legacy"` and all three toggles off, the original price
 - **Unfinished bars.** The original `legacy33` + `legacy` + toggles-off configuration still includes today's incomplete price bar mid-session. Every other configuration uses completed sessions only.
 - **The benchmark can be picked with toggles off.** The original configuration ranks SPY alongside stocks and can select it, which the validator rejects. Every other configuration selects only universe stocks.
 - **Trading costs are not modeled.** Commission defaults to $0 unless `commission_per_trade` is set, and equal target weights can create large trades in small positions.
+- **Politician data lags.** Members may file up to 45 days after a trade, amounts are ranges, House only, and scanned filings are skipped.
 - **The yfinance news fallback is unofficial** and can fail for long stretches. It stops after 3 straight failures.
 
 ## Account-aware quant baseline
