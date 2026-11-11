@@ -415,9 +415,9 @@ def write_evidence(evidence: RunEvidence, run_dir: Path) -> Path:
     return out
 
 
-def build_weight_prompt(evidence: RunEvidence, run_dir: Path, account_dir: Path | None = None,
-                        blocks: UntrustedBlocks | None = None) -> Path:
-    """Write runs/<run_id>/weight_prompt.txt and the evidence snapshot."""
+def prepare_sections(evidence: RunEvidence, run_dir: Path, account_dir: Path | None = None,
+                     blocks: UntrustedBlocks | None = None) -> dict[str, str]:
+    """Write the evidence snapshot and return the four original prompt sections."""
     blocks = blocks or UntrustedBlocks()
     account_dir = account_dir or evidence.account_dir
     write_evidence(evidence, run_dir)
@@ -426,10 +426,18 @@ def build_weight_prompt(evidence: RunEvidence, run_dir: Path, account_dir: Path 
         evidence.review.to_csv(run_dir / "holdings_review.csv", index=False)
     if len(evidence.reference_prices):
         evidence.reference_prices.to_csv(run_dir / "reference_prices.csv", index=False)
-    return save_weight_prompt(
-        run_dir,
-        build_instructions(evidence.run_date, blocks),
-        macro_section(evidence, blocks),
-        firm_section(evidence, blocks),
-        risk_section(evidence, account_dir),
-    )
+    return {
+        "instructions": build_instructions(evidence.run_date, blocks),
+        "macro": macro_section(evidence, blocks),
+        "firms": firm_section(evidence, blocks),
+        "risk": risk_section(evidence, account_dir),
+        "untrusted_token": blocks.token,
+    }
+
+
+def build_weight_prompt(evidence: RunEvidence, run_dir: Path, account_dir: Path | None = None,
+                        blocks: UntrustedBlocks | None = None) -> Path:
+    """Write runs/<run_id>/weight_prompt.txt and the evidence snapshot."""
+    sections = prepare_sections(evidence, run_dir, account_dir, blocks)
+    return save_weight_prompt(run_dir, sections["instructions"], sections["macro"], sections["firms"],
+                              sections["risk"])

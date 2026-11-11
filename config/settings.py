@@ -87,6 +87,13 @@ EXPECTED_BUYS_PER_WEEKLY_RUN = 1  # cautious guess for later runs this month, fo
 CONTEST_MIN_OBS = {"daily": 60, "logged intervals": 8}
 CONTEST_LOW_CONFIDENCE_OBS = {"daily": 126, "logged intervals": 26}
 
+# Agent committee bounds (enforced by the validator when agents/committee.json exists).
+AGENT_MAX_SWAPS = 3                # new names vs the holdings-aware quant portfolio; LeBron's call counts
+AGENT_MAX_EXTRA_CASH_PCT = 10      # cash may exceed the regime target by at most this much
+AGENT_EQUITY_BATCH_SIZE = 5        # tickers per Equity Research Analyst subagent
+AGENT_PM_MAX_RETRIES = 2
+AGENT_MAX_REWEIGHT_PCT = 2         # LeBron's reweight call
+
 # Class rules come from the assignment. A failure is a grade risk.
 CLASS_RULES = {
     "min_stocks": 5,                    # held at all times; ETFs do not count

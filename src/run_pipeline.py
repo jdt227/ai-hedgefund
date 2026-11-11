@@ -20,7 +20,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from config import settings
 from src import http_utils
-from src.build_weight_prompt import RunEvidence, build_weight_prompt
+from src.agents.packets import write_packets
+from src.build_weight_prompt import RunEvidence, build_weight_prompt, prepare_sections
 from src.catalysts import run_catalysts, vetoes
 from src.create_submission_placeholders import create_submission_files
 from src.account.inputs import DEFAULT_ACCOUNT_DIR, load_account
@@ -40,6 +41,7 @@ from src.reporting.audit_files import create_run_directory
 from src.reporting.weekly_sections import overlay_sections
 from src.strategy_form import changed_since_last_form
 from src.universe import get_universe
+from src.untrusted import UntrustedBlocks
 from src.universe.eligibility import eligibility_table, extreme_move_flags
 
 
@@ -231,6 +233,8 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the weekly pipeline.")
     parser.add_argument("--placeholder", action="store_true",
                         help="Only write the clearly labeled placeholder submission files.")
+    parser.add_argument("--agents", action="store_true",
+                        help="Write agent input packets instead of the final prompt (see /weekly-picks).")
     args = parser.parse_args(argv)
     if args.placeholder:
         for path in create_submission_files():
@@ -339,7 +343,13 @@ def main(argv: list[str] | None = None) -> None:
     report_path.write_text("\n".join(lines), encoding="utf-8")
 
     run_dir = create_run_directory(RUNS_DIR)
-    prompt_path = build_weight_prompt(evidence, run_dir)
+    if args.agents:
+        blocks = UntrustedBlocks()
+        sections = prepare_sections(evidence, run_dir, blocks=blocks)
+        packets = write_packets(evidence, run_dir, sections, blocks)
+        prompt_path = None
+    else:
+        prompt_path = build_weight_prompt(evidence, run_dir)
 
     print("\nPortfolio created successfully.")
     print(portfolio[["ticker", "sector", "composite_score", "weight_pct"]])
@@ -353,10 +363,14 @@ def main(argv: list[str] | None = None) -> None:
     print(f"\nNetwork calls this run: {http_utils.CALL_COUNTS or 'none (all cached)'}; "
           f"runtime {time.monotonic() - started:.0f}s")
     print(f"\nSaved report: {report_path}")
-    print(f"Weight prompt: {prompt_path}")
-    print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
-    print(f"  python -m src.validate_allocation {run_dir / 'recommendation_reason.txt'}")
-    print(f"  python -m src.trade_list {run_dir}")
+    if args.agents:
+        print(f"Agent packets: {packets}")
+        print(f"Next: run the committee (/weekly-picks), then python -m src.agents.assemble {run_dir}")
+    else:
+        print(f"Weight prompt: {prompt_path}")
+        print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
+        print(f"  python -m src.validate_allocation {run_dir / 'recommendation_reason.txt'}")
+        print(f"  python -m src.trade_list {run_dir}")
     pending = _guarded("strategy_form", {}, changed_since_last_form, [])
     if pending:
         print("\nStrategy changed since last form: file one (python -m src.strategy_form).")

@@ -29,12 +29,16 @@ def save_weight_prompt(
     macro_report: str,
     firm_investment_reports: str,
     portfolio_risk_packet: str,
+    committee_memos: str | None = None,
 ) -> Path:
     """
     Assemble and save the exact prompt submitted to the portfolio model.
 
     The output is intentionally named weight_prompt.txt to match the
     assignment submission field and to preserve an audit record.
+
+    ``committee_memos`` adds a fifth section after the original four, which
+    stay byte-identical with or without it.
     """
     run_directory = Path(run_directory)
 
@@ -56,6 +60,13 @@ PORTFOLIO CONSTRAINTS AND QUANTITATIVE RISK PACKET
 ============================================================
 {portfolio_risk_packet.strip()}
 """.strip()
+    if committee_memos is not None:
+        full_prompt += f"""
+
+============================================================
+INVESTMENT COMMITTEE MEMOS
+============================================================
+{committee_memos.strip()}"""
 
     output_path = run_directory / "weight_prompt.txt"
     output_path.write_text(full_prompt + "\n", encoding="utf-8")

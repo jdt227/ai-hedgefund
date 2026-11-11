@@ -9,6 +9,7 @@ only if everything passes. Exit code 0 means pass, 1 means fail.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -30,11 +31,13 @@ FORMAT = "Format"
 CLASS_RULES = "Class rules"
 STRATEGY_LIMITS = "Strategy limits"
 HOLDINGS_ACTIONS = "Holdings actions"
+COMMITTEE_BOUNDS = "Committee bounds"
 GROUP_NOTES = {
     FORMAT: "the response cannot be read as a valid allocation",
     CLASS_RULES: "a failure is a grade risk",
     STRATEGY_LIMITS: "a failure breaks our own limits, not a class rule",
     HOLDINGS_ACTIONS: "the response must act on every current holding",
+    COMMITTEE_BOUNDS: "limits on how far the PM may move from the quant portfolio",
 }
 
 
@@ -116,6 +119,35 @@ def validate_holdings_actions(text: str, rows: list[tuple[str, str]], review: li
         Check("TRIM has a lower weight than today", not not_lower, ", ".join(not_lower) or "ok", group),
         Check("Target weights match the allocation", not mismatch, ", ".join(mismatch) or "ok", group),
         Check("Banned holdings are sold", not must_sell, ", ".join(must_sell) or "ok", CLASS_RULES),
+    ]
+
+
+def validate_committee(text: str, rows: list[tuple[str, str]], committee: dict) -> list[Check]:
+    """Bounded adjustments versus the holdings-aware quant portfolio."""
+    weights = {symbol: _parse_weight(raw) for symbol, raw in rows}
+    stocks = {s: w for s, w in weights.items() if s != CASH and w}
+    cash = weights.get(CASH) or 0
+    quant = set(committee["quant_portfolio"])
+    eligible = set(committee["eligible"])
+    holdings = set(committee["holdings"])
+    new_names = sorted(set(stocks) - quant)
+    target = committee["regime_cash_target"]
+    high = target + committee["max_extra_cash_pct"]
+    vetoed = sorted(t for t in committee["vetoes"] if t in stocks)
+    over_haircut = sorted(t for t, cap in committee["haircuts"].items() if stocks.get(t, 0) > cap)
+    not_eligible = sorted(t for t in new_names if t not in eligible)
+    bad_incumbents = sorted(t for t in stocks if t in holdings and t not in eligible)
+    group = COMMITTEE_BOUNDS
+    return [
+        Check(f"At most {committee['max_swaps']} new names vs the quant portfolio",
+              len(new_names) <= committee["max_swaps"], ", ".join(new_names) or "none", group),
+        Check(f"Cash between {target}% and {high}%", target <= cash <= high, f"{cash:g}%", group),
+        Check("Vetoed names excluded", not vetoed, ", ".join(vetoed) or "ok", group),
+        Check("Haircuts respected", not over_haircut, ", ".join(over_haircut) or "ok", group),
+        Check("New names come from the eligible list", not not_eligible, ", ".join(not_eligible) or "ok", group),
+        Check("Kept holdings are eligible", not bad_incumbents, ", ".join(bad_incumbents) or "ok", group),
+        Check("Committee response section present", bool(re.search(r"committee response", text, re.I)),
+              "ok" if re.search(r"committee response", text, re.I) else "missing", group),
     ]
 
 
@@ -208,6 +240,9 @@ def run(path: Path, universe: dict[str, str] | None = None) -> tuple[bool, list[
         checks += validate(rows, universe, {t: s for t, s in kept.items() if t not in (universe or get_universe())})
         if review:
             checks += validate_holdings_actions(text, rows, review)
+        committee_path = path.parent / "agents" / "committee.json"
+        if committee_path.exists():
+            checks += validate_committee(text, rows, json.loads(committee_path.read_text(encoding="utf-8")))
     passed = all(check.passed for check in checks)
     if passed:
         body = "".join(f"{symbol},{int(float(raw.replace('%', '')))}\n" for symbol, raw in rows)
