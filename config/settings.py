@@ -78,6 +78,10 @@ MIN_TRADE_PCT = 1             # ignore weight changes smaller than this many poi
 MAX_STALE_SESSIONS = 2            # older reference prices block share quantities
 EXPECTED_BUYS_PER_WEEKLY_RUN = 1  # cautious guess for later runs this month, for compliance planning
 
+# Contest metric (realized FF3 alpha). Below the minimum, no estimate is reported.
+CONTEST_MIN_OBS = {"daily": 60, "logged intervals": 8}
+CONTEST_LOW_CONFIDENCE_OBS = {"daily": 126, "logged intervals": 26}
+
 # Class rules come from the assignment. A failure is a grade risk.
 CLASS_RULES = {
     "min_stocks": 5,                    # held at all times; ETFs do not count

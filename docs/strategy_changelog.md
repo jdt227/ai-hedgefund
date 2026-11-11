@@ -89,3 +89,11 @@ This entry covers `src.trade_list`. **File a strategy-change form for this entry
 - **What:** validated allocations now become an ordered trade list. It keeps at least 5 stocks at every step, tracks the month's buy orders against 5, and proposes the smallest "compliance buys" when the month would fall short. It never breaks a limit to reach the count. Trades are still placed by hand.
 - **Why:** to meet the class rules at every step of a rebalance, not just at the end.
 - **Evidence:** none needed for rule compliance. Compliance buys may add small trades with no expected alpha.
+
+## Weekly model: contest metric in the prompt — 2026-11-11
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:** the risk packet now includes the model portfolio's ex-ante FF3 loadings (official Ken French factors and a labeled ETF proxy), with a note that loadings earn no alpha. Each run also reports realized alpha from logged account values and stores a strategy fingerprint.
+- **Why:** the grade is FF3 alpha, so the portfolio manager should see factor exposure when choosing weights.
+- **Evidence:** none. This adds information to the prompt; it does not change the quant selection rules.

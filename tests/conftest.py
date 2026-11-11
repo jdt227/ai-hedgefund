@@ -40,6 +40,25 @@ def legacy_configuration(monkeypatch, tmp_path):
     monkeypatch.setattr("src.run_pipeline.ACCOUNT_DIR", tmp_path / "no_account")
 
 
+@pytest.fixture(autouse=True)
+def no_network(request, monkeypatch):
+    """Offline tests must never reach the network. Live tests opt out with the marker."""
+    if request.node.get_closest_marker("live"):
+        return
+    import urllib.request
+
+    import requests
+    import yfinance
+
+    def blocked(*args, **kwargs):
+        raise ConnectionError("network disabled in offline tests")
+
+    monkeypatch.setattr(urllib.request, "urlopen", blocked)
+    monkeypatch.setattr(requests, "get", blocked)
+    monkeypatch.setattr(yfinance, "download", blocked)
+    monkeypatch.setattr(yfinance, "Ticker", blocked)
+
+
 @pytest.fixture
 def make_account(tmp_path):
     """Write an account directory and return its path."""

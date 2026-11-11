@@ -43,6 +43,29 @@ def holdings_lines(evidence: RunEvidence) -> list[str]:
     return rows
 
 
+def contest_lines(evidence: RunEvidence) -> list[str]:
+    """Realized alpha to date, with the official number first and the proxy labeled."""
+    from src.evaluation.contest import summarize
+
+    contest = evidence.contest
+    if not contest:
+        return ["Contest metric unavailable for this run."]
+    realized = contest["realized"]
+    lines = [f"Series: {contest['series_kind']}, {contest['series_points']} point(s). "
+             "The grade is FF3 alpha; only the official line uses the factors the class is graded on.", "",
+             f"- **Official (Ken French):** {summarize(realized['official'])}",
+             f"- Proxy estimate (ETFs, NOT the graded number): {summarize(realized['proxy'])}"]
+    loadings = contest["ex_ante_loadings"]
+    if loadings.get("status") != "unavailable":
+        lines += ["", "Ex-ante loadings of this week's model portfolio (exposure, not performance):",
+                  f"- Official: {summarize(loadings['official'], include_alpha=False)}",
+                  f"- Proxy: {summarize(loadings['proxy'], include_alpha=False)}",
+                  "- No alpha shown: past returns of stocks chosen for their past returns are hindsight."]
+    lines += [""] + [f"- Note: {n}" for n in contest["notes"]]
+    lines += [f"- Source {k}: {v}" for k, v in contest["sources"].items()]
+    return lines
+
+
 def overlay_sections(evidence: RunEvidence) -> list[str]:
     """Report lines for macro, score breakdown, catalysts, rejections, and data status."""
     lines = ["", "## Macro Regime", "", render_macro_report(evidence.macro), "",
@@ -53,6 +76,7 @@ def overlay_sections(evidence: RunEvidence) -> list[str]:
     if invested < settings.limits()["max_equity_pct"]:
         lines += ["", f"The model portfolio invests {invested}%: too few names fit the buy cutoff and limits, "
                       "so cash fills the rest."]
+    lines += ["", "## Contest Metric", ""] + contest_lines(evidence)
     lines += ["", "## Catalysts", ""] + catalyst_lines(evidence)
     lines += ["", "## Vetoes and Rejected Candidates", ""]
     if evidence.rule_failures:

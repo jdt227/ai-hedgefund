@@ -53,7 +53,39 @@ def read_json(path: Path) -> dict | None:
 
 
 evidence_dir = latest_evidence()
-portfolio_tab, macro_tab, news_tab = st.tabs(["Portfolio", "Macro", "News"])
+portfolio_tab, macro_tab, news_tab, contest_tab = st.tabs(["Portfolio", "Macro", "News", "Contest metric"])
+
+with contest_tab:
+    contest = read_json(evidence_dir / "contest_metric.json") if evidence_dir else None
+    if not contest:
+        st.info("No contest metric yet. Log account values with `python -m src.cli log-value` and rerun.")
+    else:
+        st.caption("The grade is Fama-French 3-factor alpha. Only the official line uses the graded factors; "
+                   "the proxy is an estimate.")
+        for label, key in (("Official (Ken French)", "official"), ("Proxy estimate (ETFs)", "proxy")):
+            result = contest["realized"].get(key, {})
+            if result.get("status") == "ok":
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric(f"{label}: alpha / yr", f"{result['alpha_annual_arithmetic']:+.1%}")
+                col2.metric("t-stat", f"{result['t_newey_west']['alpha']:.1f}")
+                col3.metric("Observations", result["observations"])
+                col4.metric("Confidence", result["confidence"])
+            else:
+                st.write(f"**{label}:** {result.get('status', 'unavailable')}. {result.get('message', '')}")
+        if contest["values"]:
+            st.subheader("Account value")
+            st.line_chart(pd.DataFrame(contest["values"]).set_index("date")["account_value"])
+        loadings = contest.get("ex_ante_loadings", {})
+        if loadings.get("status") != "unavailable":
+            st.subheader("Ex-ante loadings of the model portfolio")
+            rows = [{"factors": k, **{n: v for n, v in (loadings[k].get("coefficients") or {}).items() if n != "alpha"},
+                     "R²": loadings[k].get("r_squared")}
+                    for k in ("official", "proxy") if loadings.get(k, {}).get("status") == "ok"]
+            st.caption("No alpha shown: these stocks were picked for strong past returns, so their past intercept "
+                       "is hindsight.")
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        for note in contest["notes"]:
+            st.caption(note)
 
 with macro_tab:
     macro = read_json(evidence_dir / "macro.json") if evidence_dir else None

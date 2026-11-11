@@ -29,11 +29,13 @@ from src.data import download_market_data, download_price_data
 from src.features import add_final_score, add_standardized_scores, calculate_features
 from src.macro import MacroResult, run_macro
 from src.market_data.provider import expected_last_completed_session
+from src.evaluation.contest_run import compute_contest
 from src.holdings_review import HoldingsInputs, incumbents_from_review, review_holdings
 from src.news import run_news
 from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
 from src.reporting.audit_files import create_run_directory
 from src.reporting.weekly_sections import overlay_sections
+from src.strategy_form import changed_since_last_form
 from src.universe import get_universe
 from src.universe.eligibility import eligibility_table, extreme_move_flags
 
@@ -225,6 +227,8 @@ def main(argv: list[str] | None = None) -> None:
 
     print("2/4 Calculating signals and fetching macro and news (first run of the day can take minutes)...")
     evidence = build_run(prices, date.today(), now_utc, close, volume)
+    evidence.contest = _guarded("contest_metric", evidence.source_status,
+                                lambda: compute_contest(evidence, close if close is not None else prices, now_utc), {})
     scored_features = evidence.final_scores
 
     print("3/4 Building constrained portfolio...")
@@ -318,6 +322,11 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Next: paste it into Claude, save the response as {run_dir / 'recommendation_reason.txt'}, then run:")
     print(f"  python -m src.validate_allocation {run_dir / 'recommendation_reason.txt'}")
     print(f"  python -m src.trade_list {run_dir}")
+    pending = _guarded("strategy_form", {}, changed_since_last_form, [])
+    if pending:
+        print("\nStrategy changed since last form: file one (python -m src.strategy_form).")
+        for change in pending[:8]:
+            print(f"  - {change}")
 
 
 if __name__ == "__main__":

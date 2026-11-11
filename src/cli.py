@@ -4,6 +4,7 @@
     python -m src.cli validate       # validate + reconcile account inputs (no network)
     python -m src.cli recommend      # full run with live market data
     python -m src.cli recommend --fixture   # offline demo; output labeled FIXTURE
+    python -m src.cli log-value 2026-11-10 100000.00   # log an account value for alpha tracking
 """
 
 from __future__ import annotations
@@ -98,6 +99,17 @@ def cmd_recommend(args) -> int:
     return 0
 
 
+def cmd_log_value(args) -> int:
+    from src.evaluation.account_values import ACCOUNT_VALUES_FILE, log_value
+
+    try:
+        print(log_value(Path(args.account_dir) / ACCOUNT_VALUES_FILE, args.date, args.value, args.note))
+    except ValueError as exc:
+        print(f"Not logged: {exc}")
+        return 1
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m src.cli")
     parser.add_argument("--account-dir", default=str(DEFAULT_ACCOUNT_DIR))
@@ -106,6 +118,11 @@ def main(argv=None) -> int:
     v = sub.add_parser("validate")
     v.add_argument("--month", help="YYYY-MM (default: current month in class timezone)")
     v.set_defaults(func=cmd_validate)
+    lv = sub.add_parser("log-value", help="append an account value from the class game")
+    lv.add_argument("date", help="YYYY-MM-DD")
+    lv.add_argument("value", help="account value shown in the game")
+    lv.add_argument("--note", default="class game account value")
+    lv.set_defaults(func=cmd_log_value)
     r = sub.add_parser("recommend")
     r.add_argument("--fixture", action="store_true", help="offline synthetic data (labeled FIXTURE)")
     r.add_argument("--refresh", action="store_true", help="ignore the market-data cache")

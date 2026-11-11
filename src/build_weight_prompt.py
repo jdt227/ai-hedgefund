@@ -51,6 +51,7 @@ class RunEvidence:
     weight_basis: str = ""                                            # what review weights are a percent of
     account_dir: Path = DEFAULT_ACCOUNT_DIR
     reference_prices: pd.DataFrame = field(default_factory=pd.DataFrame)  # ticker, reference_price, reference_date
+    contest: dict = field(default_factory=dict)                         # realized alpha and ex-ante loadings
 
 
 def build_instructions(run_date: date, blocks: UntrustedBlocks) -> str:
@@ -90,6 +91,9 @@ Output format:
 - Stock weights plus CASH must sum exactly to 100%.
 - Reject candidates with severe data-quality, liquidity, or risk-veto flags.
 - Hold additional cash when the evidence is weak, conflicting, or concentrated.
+
+The risk packet shows the model portfolio's FF3 loadings. Loadings describe exposure;
+they earn no alpha themselves.
 
 The macro section gives a regime and a target cash level. Treat that as the
 starting point for cash. Macro is an overlay: it does not pick stocks.
@@ -346,14 +350,36 @@ def risk_section(evidence: RunEvidence, account_dir: Path) -> str:
     if evidence.quality_flags:
         lines += ["Data-quality warnings, extreme one-day moves in the last 63 sessions (check before trusting):"]
         lines += [f"- {t}: {move}" for t, move in sorted(evidence.quality_flags.items())[:20]]
+    lines += ["", *loadings_lines(evidence)]
     lines += ["", holdings_section(evidence, account_dir)]
     return "\n".join(lines)
+
+
+def loadings_lines(evidence: RunEvidence) -> list[str]:
+    """Ex-ante FF3 loadings of the model portfolio. Exposure only; loadings earn no alpha."""
+    from src.evaluation.contest import summarize
+
+    loadings = evidence.contest.get("ex_ante_loadings")
+    if not loadings:
+        return ["Ex-ante FF3 loadings of the model portfolio: unavailable for this run."]
+    if loadings.get("status") == "unavailable":
+        return [f"Ex-ante FF3 loadings of the model portfolio: {loadings.get('message', 'unavailable')}"]
+    return ["Ex-ante FF3 loadings of the model portfolio (past year, daily, stocks only). These describe "
+            "exposure; market, size, and value loadings earn no credit in the grade:",
+            f"- Official Ken French factors: {summarize(loadings['official'], include_alpha=False)}",
+            f"- ETF proxy factors (estimate, more recent): {summarize(loadings['proxy'], include_alpha=False)}",
+            "- No alpha is shown: these stocks were picked for strong past returns, so their past intercept is "
+            "hindsight, not expected alpha."]
 
 
 def write_evidence(evidence: RunEvidence, run_dir: Path) -> Path:
     """Save the point-in-time snapshot this run used, for later backtesting."""
     out = run_dir / "evidence"
     out.mkdir(parents=True, exist_ok=True)
+    if evidence.contest:
+        (out / "contest_metric.json").write_text(json.dumps(evidence.contest, indent=2, default=str), encoding="utf-8")
+    from src.strategy_fingerprint import fingerprint
+    (out / "strategy_fingerprint.json").write_text(json.dumps(fingerprint(), indent=1), encoding="utf-8")
     (out / "macro.json").write_text(json.dumps(evidence.macro.as_dict(), indent=2, default=str), encoding="utf-8")
     (out / "source_status.json").write_text(json.dumps(
         {"run_date": evidence.run_date.isoformat(), "generated_at_utc": evidence.now_utc.isoformat(),

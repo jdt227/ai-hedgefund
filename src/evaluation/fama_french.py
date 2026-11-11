@@ -37,6 +37,9 @@ import pandas as pd
 
 FRENCH_DAILY_URL = ("https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
                     "F-F_Research_Data_Factors_daily_CSV.zip")
+# Weeks end on Fridays; checked 2026-11-03 (file then ended 2026-09-25).
+FRENCH_WEEKLY_URL = ("https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
+                     "F-F_Research_Data_Factors_weekly_CSV.zip")
 FACTORS = ["Mkt-RF", "SMB", "HML"]
 PERIODS_PER_YEAR = 252
 
@@ -61,11 +64,18 @@ def parse_french_csv(text: str) -> pd.DataFrame:
 
 def load_french_daily(cache_dir: Path = Path("data/cache"), max_age_days: float = 7,
                       refresh: bool = False) -> tuple[pd.DataFrame, dict]:
+    return load_french("daily", cache_dir, max_age_days, refresh)
+
+
+def load_french(frequency: str = "daily", cache_dir: Path = Path("data/cache"), max_age_days: float = 7,
+                refresh: bool = False) -> tuple[pd.DataFrame, dict]:
+    """Ken French 3-factor file ("daily" or "weekly"), cached, in decimal units."""
     import urllib.request
 
+    url = {"daily": FRENCH_DAILY_URL, "weekly": FRENCH_WEEKLY_URL}[frequency]
     cache_dir.mkdir(parents=True, exist_ok=True)
-    path = cache_dir / "ff3_daily.csv"
-    meta_path = cache_dir / "ff3_daily.json"
+    path = cache_dir / f"ff3_{frequency}.csv"
+    meta_path = cache_dir / f"ff3_{frequency}.json"
     now = datetime.now(timezone.utc)
     if path.exists() and meta_path.exists() and not refresh:
         meta = json.loads(meta_path.read_text())
@@ -73,15 +83,15 @@ def load_french_daily(cache_dir: Path = Path("data/cache"), max_age_days: float 
         if age <= max_age_days:
             frame = pd.read_csv(path, index_col="date", parse_dates=True)
             return frame, meta | {"from_cache": True}
-    with urllib.request.urlopen(FRENCH_DAILY_URL, timeout=30) as resp:
+    with urllib.request.urlopen(url, timeout=30) as resp:
         payload = resp.read()
     with zipfile.ZipFile(io.BytesIO(payload)) as zf:
         text = zf.read(zf.namelist()[0]).decode("latin-1")
     frame = parse_french_csv(text)
     frame.to_csv(path)
-    meta = {"source": FRENCH_DAILY_URL, "downloaded_at_utc": now.isoformat(),
+    meta = {"source": url, "frequency": frequency, "downloaded_at_utc": now.isoformat(),
             "first_date": str(frame.index[0].date()), "latest_date": str(frame.index[-1].date()),
-            "units": "decimal daily returns (converted from percent)"}
+            "units": f"decimal {frequency} returns (converted from percent)"}
     meta_path.write_text(json.dumps(meta, indent=1))
     return frame, meta | {"from_cache": False}
 
@@ -98,7 +108,8 @@ def _newey_west(X: np.ndarray, resid: np.ndarray, lags: int) -> np.ndarray:
     return xtx_inv @ s @ xtx_inv * n / (n - X.shape[1])
 
 
-def ff3_regression(portfolio_returns: pd.Series, factors: pd.DataFrame, min_obs: int = 60) -> dict:
+def ff3_regression(portfolio_returns: pd.Series, factors: pd.DataFrame, min_obs: int = 60,
+                   periods_per_year: int = PERIODS_PER_YEAR) -> dict:
     """Regress portfolio excess returns on the three factors."""
     rp = portfolio_returns.dropna().astype(float)
     rp.index = pd.DatetimeIndex(rp.index).normalize()
@@ -111,7 +122,8 @@ def ff3_regression(portfolio_returns: pd.Series, factors: pd.DataFrame, min_obs:
         "sample_start": str(joined.index.min().date()) if len(joined) else None,
         "sample_end": str(joined.index.max().date()) if len(joined) else None,
         "return_type": "total simple returns; RF subtracted inside",
-        "annualization": f"arithmetic alpha x {PERIODS_PER_YEAR}; geometric (1+alpha)^{PERIODS_PER_YEAR}-1",
+        "periods_per_year": periods_per_year,
+        "annualization": f"arithmetic alpha x {periods_per_year}; geometric (1+alpha)^{periods_per_year}-1",
     }
     if len(joined) < min_obs:
         result["status"] = "insufficient_history"
@@ -139,10 +151,11 @@ def ff3_regression(portfolio_returns: pd.Series, factors: pd.DataFrame, min_obs:
         "t_newey_west": dict(zip(names, t_nw.tolist())),
         "newey_west_lags": lags,
         "r_squared": float(1 - resid @ resid / ss_tot) if ss_tot > 0 else float("nan"),
-        "alpha_daily": float(coef[0]),
-        "alpha_annual_arithmetic": float(coef[0] * PERIODS_PER_YEAR),
-        "alpha_annual_geometric": float((1 + coef[0]) ** PERIODS_PER_YEAR - 1),
-        "residual_vol_annual": float(np.sqrt(sigma2 * PERIODS_PER_YEAR)),
+        "alpha_daily": float(coef[0]),  # per period; the name is kept for older callers
+        "alpha_per_period": float(coef[0]),
+        "alpha_annual_arithmetic": float(coef[0] * periods_per_year),
+        "alpha_annual_geometric": float((1 + coef[0]) ** periods_per_year - 1),
+        "residual_vol_annual": float(np.sqrt(sigma2 * periods_per_year)),
     })
     return result
 

@@ -325,7 +325,7 @@ def test_dashboard_renders_real_regime_and_news(main_env, monkeypatch):
     dashboard = Path(__file__).resolve().parents[1] / "app" / "dashboard.py"
     app = AppTest.from_file(str(dashboard), default_timeout=60).run()
     assert not app.exception
-    assert [tab.label for tab in app.tabs] == ["Portfolio", "Macro", "News"]
+    assert [tab.label for tab in app.tabs] == ["Portfolio", "Macro", "News", "Contest metric"]
     assert any(metric.label == "Regime" for metric in app.metric)
     assert len(app.selectbox) == 1 and "AAPL" in app.selectbox[0].options
 
