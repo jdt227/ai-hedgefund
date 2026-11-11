@@ -347,6 +347,8 @@ def main(argv: list[str] | None = None) -> None:
         blocks = UntrustedBlocks()
         sections = prepare_sections(evidence, run_dir, blocks=blocks)
         packets = write_packets(evidence, run_dir, sections, blocks)
+        # The agents' guard hook allows access to this run only.
+        (RUNS_DIR / ".current_run").write_text(run_dir.name + "\n", encoding="utf-8")
         prompt_path = None
     else:
         prompt_path = build_weight_prompt(evidence, run_dir)

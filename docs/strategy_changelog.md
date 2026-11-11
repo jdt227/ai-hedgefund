@@ -113,3 +113,11 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
 - **What:** added a politician overlay from House periodic transaction reports (free House Clerk files). For each stock: (members disclosing buys − members disclosing sells) / (buyers + sellers + 2), clipped to ±1, times `W_POLITICIAN` = 0.05. Uses filing dates (when trades became public) over 90 days, stock trades only, no person or party weighting. Senate filings are not used. Toggle with `USE_POLITICIAN_OVERLAY`.
 - **Why:** a small, transparent signal from public disclosures, kept separate so its effect can be measured by turning it off.
 - **Evidence:** none. Disclosures lag trades by up to 45 days, amounts are ranges, and congressional trades have no established record of beating the market. Parsing found 97.9% of stock lines in a live sample; scanned filings (about 15%) are skipped.
+
+## Weekly model: agent committee — 2026-11-11
+
+This entry covers `/weekly-picks`. **File a strategy-change form for this entry.** Edits to `.claude/agents/*.md` count as strategy changes and appear in the form diff.
+
+- **What:** an optional seven-member committee of Claude Code subagents (Macro Strategist, Equity Research Analysts, NBA Scout, Politician Tracker, Risk Manager, LeBron, Portfolio Manager) reads Python-written packets and writes memos. The Risk Manager's vetoes and haircuts are applied by Python. The PM may move at most 3 names from the quant portfolio and hold cash between the regime target and 10 points above it. The validator enforces every bound. The plain `python -m src.run_pipeline` path is unchanged.
+- **Why:** to add qualitative review of the quant picks, within limits Python enforces.
+- **Evidence:** none. LLM judgment is untested, and persona agents add perspective, not evidence.

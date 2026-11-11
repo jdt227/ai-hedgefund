@@ -11,3 +11,4 @@ private/
 data/cache/
 # Generated run folders can contain holdings. `git add -f` to commit one on purpose.
 runs/*/
+runs/.current_run
