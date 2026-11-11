@@ -1,7 +1,7 @@
-"""Extension point for future research overlays (NOT implemented yet).
+"""Protocol for research overlays. Implemented: src/overlays/scout.py.
 
-Planned overlays - e.g. a politician-disclosure watcher, an evidence-based
-"scout" rubric, an experiment planner - must implement ``SignalOverlay`` and
+Overlays such as the scout rubric, and later a politician-disclosure
+watcher or an experiment planner, must implement ``SignalOverlay`` and
 obey these rules so they can be evaluated against the baseline:
 
 * Return one row per ticker with a numeric ``value`` and an ``available_at``

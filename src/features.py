@@ -102,12 +102,15 @@ def add_final_score(
     sentiment_z: pd.Series | None = None,
     w_sector: float = W_SECTOR_TILT,
     w_sentiment: float = W_SENTIMENT,
+    overlays: dict[str, tuple[pd.Series, float]] | None = None,
 ) -> pd.DataFrame:
     """
     final_score = composite_score + w_sector * sector_tilt + w_sentiment * sentiment_z
+                  + sum of weight * value for each overlay
 
-    Missing tilts and sentiment count as 0, so with no overlay data the final
-    score equals the composite score and the ranking does not change.
+    Overlay values must already be bounded to [-1, 1]. Missing tilts, sentiment,
+    and overlay values count as 0, so with no overlay data the final score
+    equals the composite score and the ranking does not change.
     """
     out = scored.copy()
     tilts = sector_tilts or {}
@@ -129,4 +132,8 @@ def add_final_score(
         + out["sector_contribution"]
         + out["sentiment_contribution"]
     )
+    for name, (values, weight) in (overlays or {}).items():
+        out[f"{name}_value"] = values.reindex(out.index).fillna(0.0).clip(-1, 1)
+        out[f"{name}_contribution"] = weight * out[f"{name}_value"]
+        out["final_score"] += out[f"{name}_contribution"]
     return out.sort_values("final_score", ascending=False, kind="stable")

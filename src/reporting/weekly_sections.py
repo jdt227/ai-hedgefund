@@ -11,11 +11,12 @@ from src.macro import render_macro_report
 
 def score_breakdown(evidence: RunEvidence) -> list[str]:
     scores = evidence.final_scores
-    rows = ["| Ticker | Weight | Final | Momentum/vol | Sector tilt | Sentiment |", "|---|---:|---:|---:|---:|---:|"]
+    rows = ["| Ticker | Weight | Final | Momentum/vol | Sector tilt | Sentiment | Scout |", "|---|---:|---:|---:|---:|---:|---:|"]
     for row in evidence.portfolio.itertuples():
         s = scores.loc[row.ticker]
+        scout = s.get("scout_contribution", 0.0)
         rows.append(f"| {row.ticker} | {int(row.weight_pct)}% | {s['final_score']:+.3f} | {s['composite_score']:+.3f} | "
-                    f"{s['sector_contribution']:+.3f} | {s['sentiment_contribution']:+.3f} |")
+                    f"{s['sector_contribution']:+.3f} | {s['sentiment_contribution']:+.3f} | {scout:+.3f} |")
     return rows
 
 

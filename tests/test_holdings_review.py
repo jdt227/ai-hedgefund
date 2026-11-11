@@ -299,7 +299,7 @@ def test_full_pipeline_writes_review_and_prompt_lines(make_account, tmp_path, mo
     uni = universe()
     monkeypatch.setattr(settings, "UNIVERSE_MODE", "sp500")
     monkeypatch.setattr(run_pipeline, "get_universe", lambda: uni)
-    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS"):
+    for name in ("USE_MACRO_REGIME", "USE_NEWS_SENTIMENT", "USE_CATALYST_FLAGS", "USE_SCOUT_OVERLAY"):
         monkeypatch.setattr(settings, name, False)
     prices, close, volume = market(list(uni) + ["SPY"])
     from src.features import add_standardized_scores, calculate_features

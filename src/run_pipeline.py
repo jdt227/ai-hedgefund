@@ -32,6 +32,7 @@ from src.market_data.provider import expected_last_completed_session
 from src.evaluation.contest_run import compute_contest
 from src.holdings_review import HoldingsInputs, incumbents_from_review, review_holdings
 from src.news import run_news
+from src.overlays.scout import ScoutOverlay
 from src.portfolio import build_competition_portfolio, build_portfolio, summarize_sector_weights
 from src.reporting.audit_files import create_run_directory
 from src.reporting.weekly_sections import overlay_sections
@@ -60,7 +61,8 @@ def _guarded(name: str, status: dict[str, str], func, default=None):
 
 
 def overlays_enabled() -> bool:
-    return settings.USE_MACRO_REGIME or settings.USE_NEWS_SENTIMENT or settings.USE_CATALYST_FLAGS
+    return (settings.USE_MACRO_REGIME or settings.USE_NEWS_SENTIMENT or settings.USE_CATALYST_FLAGS
+            or settings.USE_SCOUT_OVERLAY)
 
 
 def uses_original_model() -> bool:
@@ -146,8 +148,17 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd
     else:
         status["catalysts"] = "disabled"
 
+    scout = None
+    if settings.USE_SCOUT_OVERLAY:
+        scout = _guarded("scout", status, lambda: run_scout(scored, table, universe, held, prices, catalysts, now_utc))
+        status.setdefault("scout", "ok" if scout is not None and len(scout) else "unavailable: no benchmark prices")
+    else:
+        status["scout"] = "disabled"
+    overlays = {}
+    if scout is not None and len(scout):
+        overlays["scout"] = (scout.set_index("ticker")["value"], settings.W_SCOUT)
     final = add_final_score(scored, universe, macro.sector_tilts,
-                            news.sentiment["sentiment_z"] if news is not None else None)
+                            news.sentiment["sentiment_z"] if news is not None else None, overlays=overlays)
     vetoed = vetoes(catalysts.flags) if catalysts is not None else {}
     review, basis = _review(final, table, universe, account_dir, prices, close, catalysts, vetoed)
 
@@ -163,7 +174,8 @@ def build_run(prices: pd.DataFrame, run_date: date, now_utc: datetime, close: pd
         failures = []
     return RunEvidence(run_date, now_utc, prices, final, portfolio, rejected, failures, vetoed, macro,
                        news, catalysts, status, universe, excluded, quality, deep, review, basis, account_dir,
-                       reference_prices(close if close is not None else prices))
+                       reference_prices(close if close is not None else prices), {},
+                       scout if scout is not None else pd.DataFrame())
 
 
 def reference_prices(frame: pd.DataFrame) -> pd.DataFrame:
@@ -172,6 +184,16 @@ def reference_prices(frame: pd.DataFrame) -> pd.DataFrame:
              "reference_date": str(frame[t].dropna().index[-1].date())}
             for t in frame.columns if frame[t].notna().any()]
     return pd.DataFrame(rows, columns=["ticker", "reference_price", "reference_date"])
+
+
+def run_scout(scored: pd.DataFrame, table: pd.DataFrame, universe: dict[str, str], held: list[str],
+              prices: pd.DataFrame, catalysts, now_utc: datetime) -> pd.DataFrame:
+    """Scout grades for eligible stocks and holdings. Team fit is measured against the top candidates."""
+    eligible = [t for t in scored.index if t in table.index and table.at[t, "eligible"]]
+    top = eligible[: settings.PROMPT_TOP_CANDIDATES]
+    overlay = ScoutOverlay(prices, top, settings.W_SCOUT, catalysts.flags if catalysts is not None else {})
+    tickers = list(dict.fromkeys(eligible + [t for t in held if t in scored.index]))
+    return overlay.compute(tickers, now_utc)
 
 
 def _review(final: pd.DataFrame, table: pd.DataFrame, universe: dict[str, str], account_dir: Path,

@@ -97,3 +97,11 @@ This entry covers `src.run_pipeline`. **File a strategy-change form for this ent
 - **What:** the risk packet now includes the model portfolio's ex-ante FF3 loadings (official Ken French factors and a labeled ETF proxy), with a note that loadings earn no alpha. Each run also reports realized alpha from logged account values and stores a strategy fingerprint.
 - **Why:** the grade is FF3 alpha, so the portfolio manager should see factor exposure when choosing weights.
 - **Evidence:** none. This adds information to the prompt; it does not change the quant selection rules.
+
+## Weekly model: scout overlay — 2026-11-11
+
+This entry covers `src.run_pipeline`. **File a strategy-change form for this entry.**
+
+- **What:** added a scout overlay with A-F grades for clutch (downside capture vs SPY), durability (drawdown and recovery), team fit (correlation with other top candidates), injury report, and scoring. Only clutch, durability, and team fit move the score, by at most +/-0.05 (`W_SCOUT`). Toggle with `USE_SCOUT_OVERLAY`.
+- **Why:** to reward stocks that hold up in market selloffs and diversify the portfolio, without counting momentum twice.
+- **Evidence:** none. Basketball scouting is a reasoning metaphor, and the weight is kept small for that reason.

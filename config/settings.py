@@ -54,6 +54,8 @@ UNIVERSE = {
 USE_MACRO_REGIME = True
 USE_NEWS_SENTIMENT = True
 USE_CATALYST_FLAGS = True
+USE_SCOUT_OVERLAY = True
+W_SCOUT = 0.05               # scout value is in [-1, 1], so at most +/-0.05 of score
 
 # final_score = composite_score + W_SECTOR_TILT * sector_tilt + W_SENTIMENT * sentiment_z
 W_SECTOR_TILT = 0.15

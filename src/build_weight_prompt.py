@@ -52,6 +52,7 @@ class RunEvidence:
     account_dir: Path = DEFAULT_ACCOUNT_DIR
     reference_prices: pd.DataFrame = field(default_factory=pd.DataFrame)  # ticker, reference_price, reference_date
     contest: dict = field(default_factory=dict)                         # realized alpha and ex-ante loadings
+    scout: pd.DataFrame = field(default_factory=pd.DataFrame)           # scout grades per ticker
 
 
 def build_instructions(run_date: date, blocks: UntrustedBlocks) -> str:
@@ -154,16 +155,25 @@ def catalyst_data_available(catalysts: CatalystResult | None) -> bool:
                for state in catalysts.source_status.values())
 
 
+def _overlay_terms(row: pd.Series) -> str:
+    names = [c[: -len("_contribution")] for c in row.index
+             if c.endswith("_contribution") and c not in ("sector_contribution", "sentiment_contribution")]
+    return "".join(f" + {name} {row[f'{name}_contribution']:+.3f}" for name in names)
+
+
 def firm_block(ticker: str, row: pd.Series, evidence: RunEvidence, blocks: UntrustedBlocks) -> str:
     lines = [
         f"--- {ticker} | {evidence.universe.get(ticker, 'n/a')} | rank by final score "
         f"{'n/a (not in eligible universe)' if pd.isna(row['rank']) else int(row['rank'])}"
         f"{' | CURRENT HOLDING' if ticker in _held(evidence) else ''} ---",
         f"Score: final {row['final_score']:+.3f} = momentum/vol {row['composite_score']:+.3f} "
-        f"+ sector tilt {row['sector_contribution']:+.3f} + sentiment {row['sentiment_contribution']:+.3f}",
+        f"+ sector tilt {row['sector_contribution']:+.3f} + sentiment {row['sentiment_contribution']:+.3f}"
+        f"{_overlay_terms(row)}",
         f"Momentum: 6M ex-1M {row['long_momentum']:+.1%}, 1M {row['short_momentum']:+.1%}; "
         f"annualized volatility {row['annualized_volatility']:.1%}",
     ]
+    if len(evidence.scout) and ticker in set(evidence.scout["ticker"]):
+        lines.append("Scout report: " + evidence.scout.set_index("ticker").at[ticker, "evidence"])
     catalysts = evidence.catalysts
     news = evidence.news
     outside = bool(evidence.deep_tickers) and ticker not in evidence.deep_tickers
@@ -386,6 +396,8 @@ def write_evidence(evidence: RunEvidence, run_dir: Path) -> Path:
          "sources": evidence.source_status, "vetoed": evidence.vetoed, "rule_failures": evidence.rule_failures},
         indent=2), encoding="utf-8")
     evidence.final_scores.to_csv(out / "final_scores.csv")
+    if len(evidence.scout):
+        evidence.scout.to_csv(out / "scout.csv", index=False)
     if evidence.news is not None:
         evidence.news.articles.to_csv(out / "news_articles.csv", index=False)
         evidence.news.sentiment.to_csv(out / "sentiment.csv")
