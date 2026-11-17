@@ -77,6 +77,9 @@ def current_weights(inputs: HoldingsInputs) -> tuple[dict[str, float], str]:
 
 
 def _sell_reason(ticker: str, rank: int | None, inputs: HoldingsInputs) -> str | None:
+    if ticker.upper() == settings.ALLOCATION_CASH_SYMBOL:
+        return (f"ticker {ticker} is the same as the allocation's {settings.ALLOCATION_CASH_SYMBOL} "
+                "(cash balance) row, so it cannot be kept in a Symbol,Weight block")
     banned = banned_reason(ticker, inputs.names.get(ticker), inputs.quote_types.get(ticker))
     if banned:
         return f"banned by class rules: {banned}"

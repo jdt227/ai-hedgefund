@@ -126,6 +126,12 @@ OBJECTIVE_STATEMENT = (
 # ETFs are allowed by the class. Our strategy picks stocks because an index ETF
 # adds roughly zero alpha. This is a config choice, not a rule.
 ALLOW_ETF_HOLDINGS = False
+
+# The Symbol,Weight block uses this row for the cash balance. A real stock with the same
+# ticker (Pathward Financial trades as CASH) cannot be told apart from it there, so the
+# holdings review always marks such a holding SELL and the validator ignores the cash row
+# when checking that holding's action.
+ALLOCATION_CASH_SYMBOL = "CASH"
 ETF_TICKERS = {
     "SPY", "VOO", "IVV", "QQQ", "VTI", "DIA", "IWM", "IWB", "IWD", "IWF",
     "XLK", "XLF", "XLE", "XLV", "XLP", "XLY", "XLI", "XLB", "XLU", "XLC", "XLRE",

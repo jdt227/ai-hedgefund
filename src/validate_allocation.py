@@ -23,7 +23,7 @@ from config import settings  # noqa: E402
 from src.banned_products import banned_reason, counts_as_stock, is_etf  # noqa: E402
 from src.universe import get_universe  # noqa: E402
 
-CASH = "CASH"
+CASH = settings.ALLOCATION_CASH_SYMBOL
 _ROW = re.compile(r"^\s*\|?\s*([A-Za-z][A-Za-z0-9.\-]*)\s*[,|]\s*([^,|]+?)\s*\|?\s*$")
 
 
@@ -96,6 +96,8 @@ def validate_holdings_actions(text: str, rows: list[tuple[str, str]], review: li
     actions = extract_holdings_actions(text)
     weights = {symbol: _parse_weight(raw) for symbol, raw in rows}
     held = {row["ticker"]: row for row in review}
+    # The cash row is the cash balance, never a held stock with the same ticker.
+    weights = {s: w for s, w in weights.items() if s != CASH}
     missing = sorted(set(held) - set(actions))
     extra = sorted(set(actions) - set(held))
     sold_kept = [t for t, (a, _, _) in actions.items() if a == "SELL" and weights.get(t, 0) not in (0, None)]
@@ -110,6 +112,7 @@ def validate_holdings_actions(text: str, rows: list[tuple[str, str]], review: li
                 if target is not None and a != "SELL" and weights.get(t) is not None and weights[t] != target]
     must_sell = [t for t, row in held.items() if str(row.get("reasons", "")).startswith("banned by class rules")
                  and actions.get(t, ("", None, ""))[0] != "SELL"]
+    cash_collision = [t for t in held if t.upper() == CASH and actions.get(t, ("", None, ""))[0] != "SELL"]
     group = HOLDINGS_ACTIONS
     return [
         Check("Every holding listed", not missing, ", ".join(missing) or "ok", group),
@@ -119,6 +122,7 @@ def validate_holdings_actions(text: str, rows: list[tuple[str, str]], review: li
         Check("TRIM has a lower weight than today", not not_lower, ", ".join(not_lower) or "ok", group),
         Check("Target weights match the allocation", not mismatch, ", ".join(mismatch) or "ok", group),
         Check("Banned holdings are sold", not must_sell, ", ".join(must_sell) or "ok", CLASS_RULES),
+        Check(f"A held stock with ticker {CASH} is sold", not cash_collision, ", ".join(cash_collision) or "ok", group),
     ]
 
 

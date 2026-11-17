@@ -315,3 +315,33 @@ def test_full_pipeline_writes_review_and_prompt_lines(make_account, tmp_path, mo
     assert "CURRENT HOLDING" in text and "Symbol,Action,TargetWeight,Reason" in text
     assert "$" not in text.split("Current holdings and class tracking:")[1]
     assert (tmp_path / "holdings_review.csv").exists()
+
+
+# --- a held stock whose ticker is CASH (Pathward Financial) -----------------------
+CASH_REVIEW = [
+    {"ticker": "T001", "sector": "Technology", "action": "HOLD", "current_weight_pct": 10.0, "reasons": "ok"},
+    {"ticker": "CASH", "sector": "Financials", "action": "SELL", "current_weight_pct": 4.0,
+     "reasons": "ticker CASH is the same as the allocation's CASH (cash balance) row"},
+]
+
+
+def test_holding_with_cash_ticker_is_always_sold():
+    frame, _ = review_holdings(inputs({"T001": 5000, "CASH": 4000}))
+    assert action(frame, "CASH") == "SELL"
+    assert "cash balance" in row(frame, "CASH")["reasons"]
+    assert action(frame, "T001") != "SELL"
+
+
+def test_cash_balance_row_is_not_read_as_the_cash_stock(tmp_path, fake_universe):
+    path = write_run(tmp_path, ["T001,HOLD,12,strong", "CASH,SELL,0,ticker collides with cash row"],
+                     review=CASH_REVIEW)
+    passed, checks = run(path)
+    assert not failed(checks), failed(checks)
+    assert passed
+
+
+def test_keeping_the_cash_stock_fails(tmp_path, fake_universe):
+    path = write_run(tmp_path, ["T001,HOLD,12,strong", "CASH,HOLD,5,keep it"], review=CASH_REVIEW)
+    passed, checks = run(path)
+    assert not passed
+    assert "A held stock with ticker CASH is sold" in failed(checks)
